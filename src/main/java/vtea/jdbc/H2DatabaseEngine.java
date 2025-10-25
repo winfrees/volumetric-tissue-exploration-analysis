@@ -29,6 +29,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import org.h2.tools.Csv;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import vteaobjects.MicroObject;
 
 /**
@@ -36,6 +38,8 @@ import vteaobjects.MicroObject;
  * @author sethwinfree
  */
 public class H2DatabaseEngine {
+
+    private static final Logger logger = LoggerFactory.getLogger(H2DatabaseEngine.class);
 
 //derived from https://www.javatips.net/blog/h2-database-example
     private static final String DB_DRIVER = "org.h2.Driver";
@@ -63,9 +67,9 @@ public class H2DatabaseEngine {
             createPreparedStatement.executeUpdate();
             createPreparedStatement.close();
         } catch (SQLException e) {
-            System.out.println("ERROR: Exception Message " + e.getLocalizedMessage());
+            logger.error("ERROR: Exception Message: {}", e.getLocalizedMessage(), e);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database operation failed", e);
         } finally {
             connection.close();
         }
@@ -89,9 +93,9 @@ public class H2DatabaseEngine {
             createPreparedStatement.executeUpdate();
             createPreparedStatement.close();
         } catch (SQLException e) {
-            System.out.println("ERROR: Exception Message " + e.getLocalizedMessage());
+            logger.error("ERROR: Exception Message: {}", e.getLocalizedMessage(), e);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database operation failed", e);
         } finally {
             connection.close();
         }
@@ -112,18 +116,18 @@ public class H2DatabaseEngine {
             rs = selectPreparedStatement.executeQuery();
 
             while (rs.next()) {
-                System.out.println("PROFILING: Adding: " + rs.getString(3));
+                logger.debug("PROFILING: Adding: {}", rs.getString(3));
                 al.add(rs.getString(3));
             }
 
         } catch (SQLException e) {
-            System.out.println("ERROR: Exception Message " + e.getLocalizedMessage());
+            logger.error("ERROR: Exception Message: {}", e.getLocalizedMessage(), e);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database operation failed", e);
         } finally {
             connection.close();
         }
-        System.out.println("PROFILING: The number of tables are: " + al.size());
+        logger.debug("PROFILING: The number of tables are: {}", al.size());
         return al;
     }
 
@@ -136,7 +140,7 @@ public class H2DatabaseEngine {
 
             SQL = meta.getColumnName(column);
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return SQL;
     }
@@ -178,7 +182,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("GetColumNames Exception Message " + e.getLocalizedMessage());
+            logger.error("GetColumNames Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return al;
     }
@@ -209,12 +213,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("PROFILING: getColumn Exception Message: " + e.getLocalizedMessage());
-            StackTraceElement[] st = e.getStackTrace();
-            System.out.println("PROFILING:, stack trace:");
-            for (int i = 0; i < st.length; i++) {
-                System.out.println("PROFILING:" + st[i].getClassName() + "," + st[i].getLineNumber());
-            }
+            logger.error("PROFILING: getColumn Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return measurements;
     }
@@ -245,12 +244,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("PROFILING: getColumn Exception Message: " + e.getLocalizedMessage());
-            StackTraceElement[] st = e.getStackTrace();
-            System.out.println("PROFILING:, stack trace:");
-            for (int i = 0; i < st.length; i++) {
-                System.out.println("PROFILING:" + st[i].getClassName() + "," + st[i].getLineNumber());
-            }
+            logger.error("PROFILING: getColumn Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return measurements;
     }
@@ -270,7 +264,7 @@ public class H2DatabaseEngine {
             dropPreparedStatement = cn.prepareStatement(DropStatement);
 
         } catch (SQLException e) {
-            System.out.println("PROFILING: dropColumn Exception Message " + e.getLocalizedMessage());
+            logger.error("PROFILING: dropColumn Exception Message: {}", e.getLocalizedMessage(), e);
             return false;
         }
         return true;
@@ -308,12 +302,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("PROFILING: getColumns3D Exception Message: " + e.getLocalizedMessage());
-            StackTraceElement[] st = e.getStackTrace();
-            System.out.println("PROFILING:, stack trace:");
-            for (int i = 0; i < st.length; i++) {
-                System.out.println("PROFILING:" + st[i].getClassName() + "," + st[i].getLineNumber());
-            }
+            logger.error("PROFILING: getColumns3D Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return measurements;
     }
@@ -357,12 +346,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("PROFILING: getColumnsnD Exception Message: " + e.getLocalizedMessage());
-            StackTraceElement[] st = e.getStackTrace();
-            System.out.println("PROFILING:, stack trace:");
-            for (int i = 0; i < st.length; i++) {
-                System.out.println("PROFILING:" + st[i].getClassName() + "," + st[i].getLineNumber());
-            }
+            logger.error("PROFILING: getColumnsnD Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return measurements;
     }
@@ -394,12 +378,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("PROFILING: getColumns2D Exception Message: " + e.getLocalizedMessage());
-            StackTraceElement[] st = e.getStackTrace();
-            System.out.println("PROFILING:, stack trace:");
-            for (int i = 0; i < st.length; i++) {
-                System.out.println("PROFILING:" + st[i].getClassName() + "," + st[i].getLineNumber());
-            }
+            logger.error("PROFILING: getColumns2D Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return measurements;
     }
@@ -465,7 +444,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return objects;
     }
@@ -489,7 +468,7 @@ public class H2DatabaseEngine {
             selectPreparedStatement.executeQuery();
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
             return false;
         }
         return true;
@@ -529,7 +508,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return result;
     }
@@ -571,7 +550,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return result;
     }
@@ -616,7 +595,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return result;
     }
@@ -654,7 +633,7 @@ public class H2DatabaseEngine {
             //System.out.println("Objects found: " + result.size());
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return result;
     }
@@ -705,7 +684,7 @@ public class H2DatabaseEngine {
             }
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
         return al;
     }
@@ -726,7 +705,7 @@ public class H2DatabaseEngine {
 
             //check against polygon2D
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
 
     }
@@ -737,14 +716,14 @@ public class H2DatabaseEngine {
         try {
             Class.forName(DB_DRIVER);
         } catch (ClassNotFoundException e) {
-            System.out.println(e.getMessage());
+            logger.error("Database driver not found", e);
         }
         try {
             dbConnection = DriverManager.getConnection(DB_CONNECTION, DB_USER,
                     DB_PASSWORD);
             return dbConnection;
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            logger.error("Failed to get database connection", e);
         }
         return dbConnection;
     }
@@ -779,17 +758,17 @@ public class H2DatabaseEngine {
 
             selectPreparedStatement = connection.prepareStatement(SelectQuery);
             ResultSet rs = selectPreparedStatement.executeQuery();
-            System.out.println("H2 Database inserted through PreparedStatement");
+            logger.debug("H2 Database inserted through PreparedStatement");
             while (rs.next()) {
-                System.out.println("Id " + rs.getInt("id") + " Object " + rs.getString("name"));
+                logger.debug("Id {} Object {}", rs.getInt("id"), rs.getString("name"));
             }
             selectPreparedStatement.close();
 
             //connection.commit();
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database operation failed", e);
         } finally {
             //connection.close();
         }
@@ -808,16 +787,16 @@ public class H2DatabaseEngine {
             stmt.execute("INSERT INTO OBJECTS(id, name) VALUES(3, 'Cell3')");
 
             ResultSet rs = stmt.executeQuery("select * from OBJECTS");
-            System.out.println("H2 Database inserted through Statement");
+            logger.debug("H2 Database inserted through Statement");
             while (rs.next()) {
-                System.out.println("Id " + rs.getInt("id") + " Object " + rs.getString("name"));
+                logger.debug("Id {} Object {}", rs.getInt("id"), rs.getString("name"));
             }
             stmt.close();
             connection.commit();
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database operation failed", e);
         } finally {
             connection.close();
         }
@@ -830,7 +809,7 @@ public class H2DatabaseEngine {
             meta = rs.getMetaData();
 
         } catch (SQLException e) {
-            System.out.println("Exception Message " + e.getLocalizedMessage());
+            logger.error("Exception Message: {}", e.getLocalizedMessage(), e);
         }
     }
 

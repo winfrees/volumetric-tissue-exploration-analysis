@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.slf4j.LoggerFactory;
 import net.imglib2.RealPoint;
 import static vtea._vtea.OBJECTMEASUREMENTMAP;
 import static vtea._vtea.getInterleavedStacks;
@@ -37,6 +38,8 @@ import vteaobjects.MicroObject;
  * @author sethwinfree
  */
 public class MeasurementProcessor extends AbstractProcessor {
+
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(MeasurementProcessor.class);
 
     private ArrayList<MicroObject> objects;
 
@@ -140,12 +143,12 @@ public class MeasurementProcessor extends AbstractProcessor {
                         description.add("Ch_" + channel_text + "_" + ((AbstractMeasurement) iImp).getKey());
                         descriptionLabels.add("Channel: " + channel_text + ", Measurement:" + ((AbstractMeasurement) iImp).getName());
 
-                        //System.out.println("PROFILING: Adding measurement: " + "Ch_" + channel_text + "_" + ((AbstractMeasurement) iImp).getName());
+                        //logger.debug("PROFILING: Adding measurement: Ch_{}_{}", channel_text, ((AbstractMeasurement) iImp).getName());
                     } catch (NullPointerException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-                        System.out.println("EXCEPTION: new instance decleration error... NPE etc.");
+                        logger.error("EXCEPTION: new instance declaration error", ex);
                     }
                 } catch (NullPointerException | ClassNotFoundException ex) {
-                    System.out.println("EXCEPTION: new class decleration error... Class not found.");
+                    logger.error("EXCEPTION: new class declaration error", ex);
                 }
             }
         }
@@ -198,10 +201,10 @@ public class MeasurementProcessor extends AbstractProcessor {
                         descriptionLabels.add("Row: " + l + ", Channel: " + morphology.get(1) + ", Morphology: " + morphology.get(0) + ", Measurement: " + ((AbstractMeasurement) iImp).getName());
 
                     } catch (NullPointerException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-                        System.out.println("EXCEPTION: new instance decleration error... NPE etc.");
+                        logger.error("EXCEPTION: new instance declaration error", ex);
                     }
                 } catch (NullPointerException | ClassNotFoundException ex) {
-                    System.out.println("EXCEPTION: new class decleration error... Class not found.");
+                    logger.error("EXCEPTION: new class declaration error", ex);
                 }
             }
         }
@@ -268,10 +271,10 @@ public class MeasurementProcessor extends AbstractProcessor {
                         }
 
                     } catch (NullPointerException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-                        System.out.println("EXCEPTION: new instance decleration error... NPE etc.");
+                        logger.error("EXCEPTION: new instance declaration error", ex);
                     }
                 } catch (NullPointerException | ClassNotFoundException ex) {
-                    System.out.println("EXCEPTION: new class decleration error... Class not found.");
+                    logger.error("EXCEPTION: new class declaration error", ex);
                 }
 
             }
@@ -334,10 +337,10 @@ public class MeasurementProcessor extends AbstractProcessor {
                             results.add(((AbstractMeasurement) iImp).process(new ArrayList(), (ArrayList<Number>) values));
 
                         } catch (NullPointerException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-                            System.out.println("EXCEPTION: new instance decleration error... NPE etc.");
+                            logger.error("EXCEPTION: new instance declaration error", ex);
                         }
                     } catch (NullPointerException | ClassNotFoundException ex) {
-                        System.out.println("EXCEPTION: new class decleration error... Class not found.");
+                        logger.error("EXCEPTION: new class declaration error", ex);
                     }
 
                 }

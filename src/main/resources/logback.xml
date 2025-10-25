@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+VTEA Logging Configuration
+
+Log Levels:
+- TRACE: Very detailed information, typically only of interest when diagnosing problems
+- DEBUG: Detailed information for debugging
+- INFO: Informational messages highlighting progress
+- WARN: Potentially harmful situations
+- ERROR: Error events that might still allow the application to continue
+
+Configuration:
+- Console output: INFO level and above
+- File output: DEBUG level and above
+- File rotation: Daily, max 30 days, max 1GB per file
+-->
+<configuration>
+
+    <!-- Property for log file location -->
+    <property name="LOG_DIR" value="${user.home}/.vtea/logs" />
+    <property name="LOG_FILE" value="vtea" />
+
+    <!-- Console Appender - for development and debugging -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <!-- Only show INFO and above in console -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+    </appender>
+
+    <!-- File Appender - rolling daily files -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${LOG_FILE}.log</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- Daily rollover -->
+            <fileNamePattern>${LOG_DIR}/${LOG_FILE}.%d{yyyy-MM-dd}.log</fileNamePattern>
+
+            <!-- Keep 30 days of history -->
+            <maxHistory>30</maxHistory>
+
+            <!-- Total size cap of all log files -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+
+        <!-- Log DEBUG and above to file -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
+    </appender>
+
+    <!-- Error File Appender - separate file for errors -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${LOG_FILE}-error.log</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${LOG_FILE}-error.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n%ex{full}</pattern>
+        </encoder>
+
+        <!-- Only ERROR level -->
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!-- Logger for specific packages - can be adjusted as needed -->
+
+    <!-- VTEA core - default INFO -->
+    <logger name="vtea" level="INFO" />
+
+    <!-- VTEA objects - might generate a lot of logs during processing -->
+    <logger name="vteaobjects" level="INFO" />
+
+    <!-- Processors - useful to see processing progress -->
+    <logger name="vtea.processor" level="INFO" />
+
+    <!-- Segmentation - important for debugging -->
+    <logger name="vtea.objects.Segmentation" level="INFO" />
+
+    <!-- Clustering algorithms -->
+    <logger name="vtea.clustering" level="INFO" />
+
+    <!-- Exploration UI - less verbose -->
+    <logger name="vtea.exploration" level="WARN" />
+    <logger name="vteaexploration" level="WARN" />
+
+    <!-- Database operations -->
+    <logger name="vtea.jdbc" level="INFO" />
+
+    <!-- Third-party libraries - keep quiet unless errors -->
+    <logger name="org.jfree" level="WARN" />
+    <logger name="smile" level="WARN" />
+    <logger name="org.renjin" level="WARN" />
+    <logger name="net.imglib2" level="WARN" />
+    <logger name="ij" level="WARN" />
+
+    <!-- Root logger configuration -->
+    <root level="DEBUG">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE" />
+        <appender-ref ref="ERROR_FILE" />
+    </root>
+
+</configuration>
