@@ -319,6 +319,37 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
             <version>2.2</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- ===== Deep Learning Dependencies ===== -->
+
+        <!-- PyTorch JavaCPP Bindings for deep learning models -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>pytorch-platform</artifactId>
+            <version>2.0.1-1.5.9</version>
+        </dependency>
+
+        <!-- Optional: CUDA Support for GPU acceleration -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>cuda-platform</artifactId>
+            <version>12.1-8.9-1.5.9</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- GSON for JSON serialization (model configs, class definitions) -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
+        </dependency>
+
+        <!-- JavaCPP for native library loading -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <version>1.5.9</version>
+        </dependency>
     </dependencies>
     <build>
         <resources>
