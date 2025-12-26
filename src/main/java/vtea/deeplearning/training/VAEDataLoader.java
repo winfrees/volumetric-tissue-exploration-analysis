@@ -31,7 +31,7 @@ import java.util.Random;
  * @author VTEA Development Team
  * @version 1.0
  */
-public class DataLoader {
+public class VAEDataLoader {
 
     private static final Logger logger = LoggerFactory.getLogger(DataLoader.class);
 
@@ -61,7 +61,7 @@ public class DataLoader {
      * @param normalization Normalization strategy
      * @param randomSeed Random seed for reproducibility
      */
-    public DataLoader(List<MicroObject> cells,
+    public VAEDataLoader(List<MicroObject> cells,
                      ImageStack[] imageStacks,
                      int batchSize,
                      boolean shuffle,
