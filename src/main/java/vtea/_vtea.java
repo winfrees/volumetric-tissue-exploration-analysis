@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.Date;
+import org.slf4j.LoggerFactory;
 import javax.swing.UIManager;
 import org.scijava.Context;
 import org.scijava.Prioritized;
@@ -71,6 +72,8 @@ import vtea.services.PlotMakerService;
 
 //@Plugin(type= RichPlugin.class, priority=Priority.HIGH_PRIORITY, menuPath = "Plugins>IU_Tools>VTEA")
 public class _vtea implements PlugIn, RichPlugin, ImageListener, ActionListener {
+
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(_vtea.class);
 
     public static String VERSION = new String("1.2.3");
     //public static Connection connection = H2DatabaseEngine.getDBConnection();
@@ -250,27 +253,27 @@ public class _vtea implements PlugIn, RichPlugin, ImageListener, ActionListener 
         log.setSize(new Dimension(760, 350));
         log.setLocation(0, 560);
 
-        System.out.println("Starting up VTEA... ");
-        System.out.println("-------------------------------- ");
-        System.out.println("Available memory: " + getAvailableMemory() / (1000000000) + " GB");
-        System.out.println("Available processors: " + Runtime.getRuntime().availableProcessors());
-        System.out.println("-------------------------------- ");
-        System.out.println("Seting JVM configurations...");
+        logger.info("Starting up VTEA... ");
+        logger.info("-------------------------------- ");
+        logger.info("Available memory: {} GB", getAvailableMemory() / (1000000000));
+        logger.info("Available processors: {}", Runtime.getRuntime().availableProcessors());
+        logger.info("-------------------------------- ");
+        logger.info("Seting JVM configurations...");
 
         System.setProperty("java.util.Arrays.sort", "true");
 
-        System.out.println("-------------------------------- ");
-        System.out.println("Setting ImageJ configurations...");
+        logger.info("-------------------------------- ");
+        logger.info("Setting ImageJ configurations...");
 
         IJ.run("Options...", "iterations=1 count=1");
         ImagePlus.addImageListener(this);
 
-        System.out.println("-------------------------------- ");
+        logger.info("-------------------------------- ");
 
-        System.out.println("Setting-up VTEA folders...");
-//        System.out.println("    VTEA folder:      " + DATABASE_DIRECTORY);
-//        System.out.println("    plot folder:      " + PLOT_DIRECTORY);
-//        System.out.println("    plot temp folder: " + PLOT_TMP_DIRECTORY);
+        logger.info("Setting-up VTEA folders...");
+//        logger.debug("    VTEA folder:      " + DATABASE_DIRECTORY);
+//        logger.debug("    plot folder:      " + PLOT_DIRECTORY);
+//        logger.debug("    plot temp folder: " + PLOT_TMP_DIRECTORY);
 
         if (!Files.exists(Paths.get(DATABASE_DIRECTORY))) {
 
@@ -280,12 +283,12 @@ public class _vtea implements PlugIn, RichPlugin, ImageListener, ActionListener 
 
             } catch (IOException e) {
 
-                System.err.println("ERROR: VTEA directories could not be created...");
+                logger.error("ERROR: VTEA directories could not be created", e);
 
             }
 
         }
-        
+
         if (!Files.exists(Paths.get(PLOT_DIRECTORY))) {
 
             try {
@@ -294,7 +297,7 @@ public class _vtea implements PlugIn, RichPlugin, ImageListener, ActionListener 
 
             } catch (IOException e) {
 
-                System.err.println("ERROR: VTEA plot directories could not be created");
+                logger.error("ERROR: VTEA plot directories could not be created", e);
 
             }
 
@@ -307,13 +310,13 @@ public class _vtea implements PlugIn, RichPlugin, ImageListener, ActionListener 
 
             } catch (IOException e) {
 
-                System.err.println("ERROR: VTEA plot temp directory could not be created");
+                logger.error("ERROR: VTEA plot temp directory could not be created", e);
 
             }
 
         }
 
-        System.out.println("-------------------------------- ");
+        logger.info("-------------------------------- ");
         //System.out.println("Source: " + str);
         //System.out.println("-------------------------------- ");
 
@@ -407,234 +410,211 @@ public class _vtea implements PlugIn, RichPlugin, ImageListener, ActionListener 
         //List<String> ss_namesames = ss.getQualifiedName();
         //List<String> ss_names = ss.getNames();
         //List<String> ss_namesames = ss.getQualifiedName();
-        System.out.println("Loading LUT Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading LUT Plugins: ");
 
         LUTOPTIONS = lfs_names.toArray(new String[lfs_names.size()]);
 
         for (int i = 0; i < lfs_names.size(); i++) {
             try {
                 Object o = Class.forName(lfs_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 LUTMAP.put(LUTOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load LUT plugin", ex);
+            }
         }
-        
-                System.out.println("Loading PlotMaker Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+
+        logger.info("Loading PlotMaker Plugins: ");
 
         PLOTMAKEROPTIONS = pms_names.toArray(new String[pms_names.size()]);
 
         for (int i = 0; i < pms_names.size(); i++) {
             try {
                 Object o = Class.forName(pms_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 PLOTMAKERMAP.put(PLOTMAKEROPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load PlotMaker plugin", ex);
+            }
         }
 
-        System.out.println("Loading FileType Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading FileType Plugins: ");
 
         FILETYPEOPTIONS = fts_names.toArray(new String[ss_names.size()]);
 
         for (int i = 0; i < fts_names.size(); i++) {
             try {
                 Object o = Class.forName(fts_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 FILETYPEMAP.put(FILETYPEOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load FileType plugin", ex);
+            }
         }
 
-        System.out.println("Loading Workflow Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading Workflow Plugins: ");
 
         WORKFLOWOPTIONS = ws_names.toArray(new String[ws_names.size()]);
 
         for (int i = 0; i < ws_names.size(); i++) {
             try {
                 Object o = Class.forName(ws_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 WORKFLOWMAP.put(WORKFLOWOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Workflow plugin", ex);
+            }
         }
 
-        System.out.println("Loading Processor Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Image Processing Plugins: ");
+        logger.info("Loading Processor Plugins: ");
 
         PROCESSOROPTIONS = ps_names.toArray(new String[ps_names.size()]);
 
         for (int i = 0; i < ps_names.size(); i++) {
             try {
                 Object o = Class.forName(ps_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 PROCESSORMAP.put(PROCESSOROPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Processor plugin", ex);
+            }
         }
 
-        System.out.println("Loading Image Processing Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Image Processing Plugins: ");
+        logger.info("Loading Image Processing Plugins: ");
 
         PROCESSINGOPTIONS = ips_names.toArray(new String[ips_names.size()]);
 
         for (int i = 0; i < ips_names.size(); i++) {
             try {
                 Object o = Class.forName(ips_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 PROCESSINGMAP.put(PROCESSINGOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Image Processing plugin", ex);
+            }
         }
 
-        System.out.println("Loading Measurement Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading Measurement Plugins: ");
 
         OBJECTMEASUREMENTOPTIONS = oms_names.toArray(new String[oms_names.size()]);
 
         for (int i = 0; i < oms_names.size(); i++) {
             try {
                 Object o = Class.forName(oms_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 OBJECTMEASUREMENTMAP.put(OBJECTMEASUREMENTOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Measurement plugin", ex);
+            }
         }
 
-        System.out.println("Loading Neighborhood Measurement Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading Neighborhood Measurement Plugins: ");
 
         NEIGHBORHOODEASUREMENTOPTIONS = nms_names.toArray(new String[nms_names.size()]);
 
         for (int i = 0; i < nms_names.size(); i++) {
             try {
                 Object o = Class.forName(nms_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 NEIGHBORHOODMEASUREMENTMAP.put(NEIGHBORHOODEASUREMENTOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Neighborhood Measurement plugin", ex);
+            }
         }
 
-        System.out.println("Loading Segmentation Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading Segmentation Plugins: ");
 
         SEGMENTATIONOPTIONS = ss_names.toArray(new String[ss_names.size()]);
 
         for (int i = 0; i < ss_names.size(); i++) {
             try {
                 Object o = Class.forName(ss_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 SEGMENTATIONMAP.put(SEGMENTATIONOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Segmentation plugin", ex);
+            }
         }
 
-        System.out.println("Loading Morphological Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading Morphological Plugins: ");
 
         MORPHOLOGICALOPTIONS = mfs_names.toArray(new String[mfs_names.size()]);
 
         for (int i = 0; i < mfs_names.size(); i++) {
             try {
                 Object o = Class.forName(mfs_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 MORPHOLOGICALMAP.put(MORPHOLOGICALOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Morphological plugin", ex);
+            }
         }
 
-        System.out.println("Loading Feature Plugins: ");
-        //Logger.getAnonymousLogger().log(Level.INFO, "Loading Segmentation Plugins: ");
+        logger.info("Loading Feature Plugins: ");
 
         FEATUREOPTIONS = fs_names.toArray(new String[fs_names.size()]);
 
         for (int i = 0; i < fs_names.size(); i++) {
             try {
                 Object o = Class.forName(fs_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 FEATUREMAP.put(FEATUREOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Feature plugin", ex);
+            }
         }
-        
-        System.out.println("Loading Gate Math Plugins: ");
-        
+
+        logger.info("Loading Gate Math Plugins: ");
+
         GATEMATHOPTIONS = gms_names.toArray(new String[gms_names.size()]);
 
         for (int i = 0; i < gms_names.size(); i++) {
             try {
                 Object o = Class.forName(gms_qualifiedNames.get(i)).getDeclaredConstructor().newInstance();
-                System.out.println("Loaded: " + o.getClass().getName());
-                //Logger.getLogger(VTEAService.class.getName()).log(Level.INFO, "Loaded: " + o.getClass().getName());
+                logger.info("Loaded: {}", o.getClass().getName());
                 GATEMATHMAP.put(GATEMATHOPTIONS[i], o.getClass().getName());
-            } catch (ClassNotFoundException | InstantiationException | 
+            } catch (ClassNotFoundException | InstantiationException |
                     IllegalAccessException | NoSuchMethodException |
                     SecurityException  | IllegalArgumentException |
                     InvocationTargetException ex) {
-                Logger.getLogger(_vtea.class.getName()).log(Level.SEVERE, null, ex);
-            } 
+                logger.error("Failed to load Gate Math plugin", ex);
+            }
         }
 
-        System.out.println("-------------------------------- ");
+        logger.info("-------------------------------- ");
         
         if(str.equals("load")){
                     new Thread(() -> {

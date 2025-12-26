@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import javax.swing.table.AbstractTableModel;
 import org.scijava.plugin.Plugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import vtea.exploration.plottools.panels.DefaultPlotPanels;
 import vtea.exploration.plottools.panels.XYExplorationPanel;
 import vtea.jdbc.H2DatabaseEngine;
@@ -35,6 +37,8 @@ import vteaobjects.MicroObject;
  */
 @Plugin(type = Processor.class)
 public class ExplorerProcessor extends AbstractProcessor {
+
+    private static final Logger logger = LoggerFactory.getLogger(ExplorerProcessor.class);
 
     ImagePlus impOriginal;
     ArrayList protocol;  //we may want to turn this into a class...
@@ -104,10 +108,10 @@ public class ExplorerProcessor extends AbstractProcessor {
                 }
 
                 Connection connection = H2DatabaseEngine.getDBConnection();
-                
-                
 
-                System.out.println("PROFILING: Exploring on dataset: " + key);
+
+
+                logger.info("PROFILING: Exploring on dataset: {}", key);
 
                 String title = "Segmentation_" + (impOriginal.getTitle().replace("DUP_", "")).replace(".tif", "");
 
@@ -125,11 +129,11 @@ public class ExplorerProcessor extends AbstractProcessor {
 //                ArrayList tables = H2DatabaseEngine.getListOfTables(connection);
 //                if(tables.size() > 0){
 //                    for(int i = 0; i < tables.size(); i++){
-//                    System.out.println("PROFILING: Table: " + i + ", name:" + tables.get(i));
+//                    logger.debug("PROFILING: Table: {}, name:{}", i, tables.get(i));
 //                    }}
-                
+
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Error in explorer processing", e);
             }
         }
         return null;

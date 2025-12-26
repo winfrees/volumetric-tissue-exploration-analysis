@@ -21,6 +21,8 @@ import java.awt.Component;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import org.scijava.plugin.Plugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import vtea.jdbc.H2DatabaseEngine;
 import vtea.plotprocessing.AbstractPlotMaker;
 
@@ -30,6 +32,8 @@ import vtea.plotprocessing.AbstractPlotMaker;
  */
 @Plugin(type = Processor.class)
 public class PlotProcessor extends AbstractProcessor {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlotProcessor.class);
 
     private ArrayList<String> descriptions;
     private ArrayList<String> descriptionLabels;
@@ -128,7 +132,7 @@ public class PlotProcessor extends AbstractProcessor {
 
                 firePropertyChange("comment", "", "Done.");
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Error exporting plot to PDF", e);
             }
         } else {
 
@@ -142,7 +146,7 @@ public class PlotProcessor extends AbstractProcessor {
                         vtea._vtea.H2_MEASUREMENTS_TABLE + "_"
                         + parentKey.replace("-", "_"), "Object",
                         group, this.features);
-//                
+//
                 Class<?> c;
                 c = Class.forName(vtea._vtea.PLOTMAKERMAP.get(plotType));
                 Constructor<?> con;
@@ -158,7 +162,7 @@ public class PlotProcessor extends AbstractProcessor {
                 firePropertyChange("comment", "", "Done.");
 
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Error generating plot", e);
             }
 
         }

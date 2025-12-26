@@ -29,6 +29,7 @@ import java.util.ListIterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.scijava.plugin.Plugin;
+import org.slf4j.LoggerFactory;
 import static vtea._vtea.PROCESSINGMAP;
 import vtea.imageprocessing.AbstractImageProcessing;
 
@@ -38,6 +39,8 @@ import vtea.imageprocessing.AbstractImageProcessing;
  */
 @Plugin(type = Processor.class)
 public class ImageProcessingProcessor extends AbstractProcessor {
+
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(ImageProcessingProcessor.class);
 
     ImagePlus impOriginal;
     ImagePlus impPreview;
@@ -195,7 +198,7 @@ public class ImageProcessingProcessor extends AbstractProcessor {
             firePropertyChange("escape", false, true);
 
         } catch (Exception ex) {
-            ex.printStackTrace();
+            logger.error("Error in image processing done() method", ex);
         }
     }
 
