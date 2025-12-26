@@ -151,7 +151,7 @@ public class VAETrainer {
      * @param valLoader Validation data loader
      * @return Training result with metrics
      */
-    public TrainingResult train(DataLoader trainLoader, DataLoader valLoader) {
+    public TrainingResult train(VAEDataLoader trainLoader, VAEDataLoader valLoader) {
 
         logger.info("Starting VAE training: {} epochs, {} batches/epoch",
                    config.getEpochs(), trainLoader.size());
@@ -227,7 +227,7 @@ public class VAETrainer {
      * @param totalEpochs Total epochs
      * @return Epoch metrics
      */
-    private TrainingMetrics.EpochMetrics runEpoch(DataLoader dataLoader,
+    private TrainingMetrics.EpochMetrics runEpoch(VAEDataLoader dataLoader,
                                                   boolean isTraining,
                                                   int epoch,
                                                   totalEpochs) {

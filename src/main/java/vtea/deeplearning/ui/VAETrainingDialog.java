@@ -258,7 +258,7 @@ public class VAETrainingDialog extends JFrame {
 
         progressPanel.setStatus("Creating data loaders...");
 
-        DataLoader trainLoader = new DataLoader(
+        VAEDataLoader trainLoader = new VAEDataLoader(
             trainObjects,
             new ImageStack[]{imageStack},
             config.getBatchSize(),
@@ -268,7 +268,7 @@ public class VAETrainingDialog extends JFrame {
             true  // shuffle
         );
 
-        DataLoader valLoader = new DataLoader(
+        VAEDataLoader valLoader = new VAEDataLoader(
             valObjects,
             new ImageStack[]{imageStack},
             config.getBatchSize(),
