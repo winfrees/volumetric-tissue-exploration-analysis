@@ -267,6 +267,24 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
             <version>6.1.1</version>
             <type>jar</type>
         </dependency>
+        <!-- Deep Learning: PyTorch JavaCPP Bindings -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>pytorch-platform</artifactId>
+            <version>2.5.1-1.5.11</version>
+        </dependency>
+        <!-- Deep Learning: JSON for class definitions -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
+        </dependency>
+        <!-- Deep Learning: Optional GPU Support (CUDA) -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>cuda-platform</artifactId>
+            <version>12.3-8.9-1.5.11</version>
+            <optional>true</optional>
         <!-- JDLL: Java Deep Learning Library for DeepImageJ support -->
         <dependency>
             <groupId>io.bioimage</groupId>

@@ -35,12 +35,16 @@ import java.awt.event.ItemListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.ListIterator;
 import java.util.Random;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JColorChooser;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -48,6 +52,9 @@ import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import vtea.deeplearning.data.ClassDefinition;
+import vtea.deeplearning.data.DatasetDefinition;
 import vtea.exploration.listeners.AddFeaturesListener;
 import vteaobjects.MicroObject;
 
@@ -66,16 +73,20 @@ public class ManualClassification implements WindowListener{
     int nCells = 10;
     int currentCell;
     int count;
-    
+
     HashMap<Double, Integer> result = new HashMap();
     ArrayList<AddFeaturesListener> addfeaturelisteners = new ArrayList<AddFeaturesListener>();
-    
+
     ArrayList<JTextField> textFields = new ArrayList<JTextField>();
+    ArrayList<JButton> colorButtons = new ArrayList<JButton>();
     ArrayList<JLabel> textLabels = new ArrayList<JLabel>();
     ArrayList<Integer> labelCounts = new ArrayList<Integer>();
-    
+
+    // Class definitions for deep learning integration
+    HashMap<Integer, ClassDefinition> classDefinitions = new HashMap<>();
+
     JFrame classLoggerFrame;
-    
+
     JLabel total = new JLabel("0", JLabel.CENTER);
 
     ManualClassification(ImagePlus image, ArrayList objects, ArrayList measurements, String key) {
@@ -273,8 +284,17 @@ public class ManualClassification implements WindowListener{
         public ClassLoggerWindow(int classes) {
             this.setLayout(new GridBagLayout());
             labelCounts = new ArrayList<Integer>();
-            
+            colorButtons = new ArrayList<JButton>();
+            classDefinitions = new HashMap<>();
+
+            // Initialize class definitions with default colors
             for (int i = 0; i < classes; i++) {
+                ClassDefinition classDef = new ClassDefinition(i, "Class " + i);
+                classDefinitions.put(i, classDef);
+            }
+
+            for (int i = 0; i < classes; i++) {
+                // Row 0: Classification button
                 GridBagConstraints gbc = new GridBagConstraints(i, 0, 1, 1, 0.2, 1.0,
                         GridBagConstraints.WEST, GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0);
                 JButton button = new JButton();
@@ -282,32 +302,55 @@ public class ManualClassification implements WindowListener{
                 button.setText("Class " + i);
                 button.addActionListener(this);
                 this.add(button, gbc);
-                
+
+                // Row 1: Class name text field
                 gbc = new GridBagConstraints(i, 1, 1, 1, 0.2, 1.0,
                         GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0);
-                JTextField text = new JTextField("Class " + i);
+                JTextField text = new JTextField(classDefinitions.get(i).getClassName());
                 textFields.add(text);
                 this.add(text, gbc);
-                
+
+                // Row 2: Color picker button
                 gbc = new GridBagConstraints(i, 2, 1, 1, 0.2, 1.0,
+                        GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0);
+                JButton colorButton = new JButton("Color");
+                colorButton.setName("color_" + i);
+                colorButton.setBackground(classDefinitions.get(i).getDisplayColor());
+                colorButton.addActionListener(this);
+                colorButtons.add(colorButton);
+                this.add(colorButton, gbc);
+
+                // Row 3: Count label
+                gbc = new GridBagConstraints(i, 3, 1, 1, 0.2, 1.0,
                         GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0);
                 JLabel label = new JLabel("" + 0, JLabel.CENTER);
                 label.setPreferredSize(new Dimension(10, 30));
                 textLabels.add(label);
                 labelCounts.add(0);
                 this.add(label, gbc);
-                
-//                gbc = new GridBagConstraints(classes-3, 3, 1, 1, 0.2, 1.0,
-//                        GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0);
-//                total.setPreferredSize(new Dimension(10, 30));
-//                this.add(total, gbc);
-                
-                gbc = new GridBagConstraints(classes-1, 3, 1, 1, 0.2, 1.0,
-                        GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(0, 0, 0, 5), 0, 0);
-                JButton j = new JButton("Done");
-                j.addActionListener(this);
-                this.add(j, gbc);
             }
+
+            // Row 4: Import/Export and Done buttons
+            GridBagConstraints gbc = new GridBagConstraints(0, 4, 1, 1, 0.2, 1.0,
+                    GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(5, 0, 0, 5), 0, 0);
+            JButton importButton = new JButton("Import");
+            importButton.setName("import");
+            importButton.addActionListener(this);
+            this.add(importButton, gbc);
+
+            gbc = new GridBagConstraints(1, 4, 1, 1, 0.2, 1.0,
+                    GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(5, 0, 0, 5), 0, 0);
+            JButton exportButton = new JButton("Export");
+            exportButton.setName("export");
+            exportButton.addActionListener(this);
+            this.add(exportButton, gbc);
+
+            gbc = new GridBagConstraints(classes-1, 4, 1, 1, 0.2, 1.0,
+                    GridBagConstraints.CENTER, GridBagConstraints.BOTH, new Insets(5, 0, 0, 5), 0, 0);
+            JButton doneButton = new JButton("Done");
+            doneButton.setName("done");
+            doneButton.addActionListener(this);
+            this.add(doneButton, gbc);
         }
 
         public void addResetSelectionListener(ClassificationListener listener) {
@@ -322,32 +365,175 @@ public class ManualClassification implements WindowListener{
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            if(((JButton)e.getSource()).getText() == "Done"){
-            classLoggerFrame.setVisible(false);
-            classifying.close();
-            IJ.log("VTEA Manual Classification record: ");
-            for(int i = 0; i < textFields.size(); i++){
-            IJ.log("Class "+i+": " + textFields.get(i).getText());
-            }
-            addFeature();
-            }else {
-                
-            
+            JButton source = (JButton) e.getSource();
+            String buttonName = source.getName();
 
-            result.put((double)currentCell, Integer.parseInt(((JButton) (e.getSource())).getName()));
-            
-            Integer value = labelCounts.get(Integer.parseInt(((JButton) (e.getSource())).getName()));
-            value = value + 1;
-            labelCounts.set(Integer.parseInt(((JButton) (e.getSource())).getName()), value);
-            
-            JLabel label = textLabels.get(Integer.parseInt(((JButton) (e.getSource())).getName()));
-            label.setText(value.toString());
-            
-            //total.setText("Total cells: " + getTotalCount());
-            
-            classifying.close();
-            System.gc();
-            processObject();
+            // Handle Done button
+            if ("done".equals(buttonName)) {
+                // Update class definitions with user-entered names
+                for (int i = 0; i < textFields.size(); i++) {
+                    String className = textFields.get(i).getText();
+                    classDefinitions.get(i).setClassName(className);
+                    classDefinitions.get(i).setSampleCount(labelCounts.get(i));
+                }
+
+                // Log classification results
+                IJ.log("VTEA Manual Classification record: ");
+                for (int i = 0; i < textFields.size(); i++) {
+                    ClassDefinition def = classDefinitions.get(i);
+                    IJ.log(String.format("Class %d: %s (samples: %d, color: %s)",
+                            i, def.getClassName(), def.getSampleCount(), def.getDisplayColor()));
+                }
+
+                // Save class definitions to file (optional)
+                saveClassDefinitions();
+
+                classLoggerFrame.setVisible(false);
+                classifying.close();
+                addFeature();
+            }
+            // Handle Import button
+            else if ("import".equals(buttonName)) {
+                importClassDefinitions();
+            }
+            // Handle Export button
+            else if ("export".equals(buttonName)) {
+                exportClassDefinitions();
+            }
+            // Handle Color picker buttons
+            else if (buttonName.startsWith("color_")) {
+                int classId = Integer.parseInt(buttonName.substring(6));
+                showColorPicker(classId);
+            }
+            // Handle Class assignment buttons
+            else {
+                try {
+                    int classId = Integer.parseInt(buttonName);
+
+                    result.put((double) currentCell, classId);
+
+                    Integer value = labelCounts.get(classId);
+                    value = value + 1;
+                    labelCounts.set(classId, value);
+
+                    JLabel label = textLabels.get(classId);
+                    label.setText(value.toString());
+
+                    classifying.close();
+                    System.gc();
+                    processObject();
+                } catch (NumberFormatException ex) {
+                    // Not a class button, ignore
+                }
+            }
+        }
+
+        private void showColorPicker(int classId) {
+            Color currentColor = classDefinitions.get(classId).getDisplayColor();
+            Color newColor = JColorChooser.showDialog(
+                    classLoggerFrame,
+                    "Choose Color for " + textFields.get(classId).getText(),
+                    currentColor);
+
+            if (newColor != null) {
+                classDefinitions.get(classId).setDisplayColor(newColor);
+                colorButtons.get(classId).setBackground(newColor);
+            }
+        }
+
+        private void importClassDefinitions() {
+            JFileChooser fc = new JFileChooser();
+            fc.setDialogTitle("Import Class Definitions");
+            fc.setFileFilter(new FileNameExtensionFilter("JSON files (*.json)", "json"));
+
+            if (fc.showOpenDialog(classLoggerFrame) == JFileChooser.APPROVE_OPTION) {
+                try {
+                    File file = fc.getSelectedFile();
+                    DatasetDefinition dataset = DatasetDefinition.loadFromFile(file.getAbsolutePath());
+
+                    if (dataset.hasClassDefinitions()) {
+                        classDefinitions = dataset.getClassDefinitions();
+
+                        // Update UI with imported definitions
+                        for (int i = 0; i < Math.min(textFields.size(), classDefinitions.size()); i++) {
+                            ClassDefinition def = classDefinitions.get(i);
+                            if (def != null) {
+                                textFields.get(i).setText(def.getClassName());
+                                colorButtons.get(i).setBackground(def.getDisplayColor());
+                            }
+                        }
+
+                        IJ.log("Imported " + classDefinitions.size() + " class definitions from " + file.getName());
+                    } else {
+                        JOptionPane.showMessageDialog(classLoggerFrame,
+                                "No class definitions found in file.",
+                                "Import Error",
+                                JOptionPane.WARNING_MESSAGE);
+                    }
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(classLoggerFrame,
+                            "Failed to import: " + ex.getMessage(),
+                            "Import Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }
+
+        private void exportClassDefinitions() {
+            // Update class definitions with current UI values
+            for (int i = 0; i < textFields.size(); i++) {
+                classDefinitions.get(i).setClassName(textFields.get(i).getText());
+                classDefinitions.get(i).setSampleCount(labelCounts.get(i));
+            }
+
+            JFileChooser fc = new JFileChooser();
+            fc.setDialogTitle("Export Class Definitions");
+            fc.setFileFilter(new FileNameExtensionFilter("JSON files (*.json)", "json"));
+            fc.setSelectedFile(new File("class_definitions.json"));
+
+            if (fc.showSaveDialog(classLoggerFrame) == JFileChooser.APPROVE_OPTION) {
+                try {
+                    File file = fc.getSelectedFile();
+                    String path = file.getAbsolutePath();
+                    if (!path.endsWith(".json")) {
+                        path += ".json";
+                    }
+
+                    // Create DatasetDefinition with class definitions
+                    DatasetDefinition dataset = new DatasetDefinition();
+                    dataset.setName("Manual Classification - " + key);
+                    dataset.setClassDefinitions(classDefinitions);
+
+                    dataset.saveToFile(path);
+                    IJ.log("Exported " + classDefinitions.size() + " class definitions to " + path);
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(classLoggerFrame,
+                            "Failed to export: " + ex.getMessage(),
+                            "Export Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }
+
+        private void saveClassDefinitions() {
+            try {
+                // Auto-save to a default location
+                String userHome = System.getProperty("user.home");
+                String savePath = userHome + File.separator + ".vtea" + File.separator + "last_classification.json";
+
+                File saveDir = new File(userHome + File.separator + ".vtea");
+                if (!saveDir.exists()) {
+                    saveDir.mkdirs();
+                }
+
+                DatasetDefinition dataset = new DatasetDefinition();
+                dataset.setName("Manual Classification - " + key);
+                dataset.setClassDefinitions(classDefinitions);
+                dataset.saveToFile(savePath);
+
+                IJ.log("Auto-saved class definitions to: " + savePath);
+            } catch (IOException ex) {
+                IJ.log("Warning: Could not auto-save class definitions: " + ex.getMessage());
             }
         }
         
