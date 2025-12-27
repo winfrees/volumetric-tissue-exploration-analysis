@@ -150,12 +150,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
             <artifactId>n5-imglib2</artifactId>
             <version>7.0.1</version>
         </dependency>
-        <!-- Blosc Compression for Zarr -->
-        <dependency>
-            <groupId>org.blosc</groupId>
-            <artifactId>jblosc</artifactId>
-            <version>1.21.3</version>
-        </dependency>
         <!-- Python-Java Bridge for Deep Learning Integration -->
         <dependency>
             <groupId>net.sf.py4j</groupId>
@@ -285,6 +279,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
             <artifactId>cuda-platform</artifactId>
             <version>12.3-8.9-1.5.11</version>
             <optional>true</optional>
+        </dependency>
         <!-- JDLL: Java Deep Learning Library for DeepImageJ support -->
         <dependency>
             <groupId>io.bioimage</groupId>
