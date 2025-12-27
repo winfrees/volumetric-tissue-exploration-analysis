@@ -1,275 +1,516 @@
+/*
+ * Copyright (C) 2025 University of Nebraska
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
 package vtea.deeplearning.models;
 
-import org.bytedeco.pytorch.Module;
-import org.bytedeco.pytorch.Tensor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.Serializable;
-
+import org.bytedeco.pytorch.*;
 import static org.bytedeco.pytorch.global.torch.*;
+import vtea.deeplearning.DeepLearningConfig;
+import vtea.deeplearning.data.ClassDefinition;
+
+import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Abstract base class for all deep learning models in VTEA.
+ * Provides common functionality for model management, persistence, and inference.
  *
- * <p>This class provides common functionality for PyTorch-based models:</p>
- * <ul>
- *   <li>Device management (CPU/GPU)</li>
- *   <li>Training/evaluation mode switching</li>
- *   <li>Parameter initialization</li>
- *   <li>Model state management</li>
- * </ul>
+ * Subclasses must implement:
+ * - buildArchitecture(): Define the network structure
+ * - forward(): Implement the forward pass
+ * - initializeWeights(): Initialize model parameters
  *
- * <p>All concrete model implementations (VAE, CNN, etc.) should extend this class.</p>
- *
- * @author VTEA Development Team
- * @version 1.0
+ * @author VTEA Deep Learning Team
  */
-public abstract class AbstractDeepLearningModel extends Module implements Serializable {
+public abstract class AbstractDeepLearningModel implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    protected static final Logger logger = LoggerFactory.getLogger(AbstractDeepLearningModel.class);
+    // Model metadata
+    protected String modelName;
+    protected int inputChannels;
+    protected int numClasses;
+    protected int[] inputShape;  // [depth, height, width]
 
-    protected boolean useGPU;
-    protected boolean isTraining;
-    protected String deviceType;
+    // Class definitions for human-readable results
+    protected HashMap<Integer, ClassDefinition> classDefinitions;
+
+    // PyTorch components (transient - not serialized)
+    protected transient Module network;
+    protected transient Device device;
+    protected transient boolean isBuilt;
 
     /**
-     * Initializes the model with default settings (CPU, training mode).
+     * Constructor
      */
-    public AbstractDeepLearningModel() {
-        this(false);
-    }
-
-    /**
-     * Initializes the model with specified device setting.
-     *
-     * @param useGPU Whether to use GPU for computations
-     */
-    public AbstractDeepLearningModel(boolean useGPU) {
-        super();
-        this.useGPU = useGPU && cuda_is_available();
-        this.isTraining = true;
-        this.deviceType = this.useGPU ? "CUDA" : "CPU";
-
-        if (useGPU && !cuda_is_available()) {
-            logger.warn("GPU requested but CUDA not available. Using CPU.");
+    public AbstractDeepLearningModel(String modelName, int inputChannels, int numClasses, int[] inputShape) {
+        if (inputShape == null || inputShape.length != 3) {
+            throw new IllegalArgumentException("Input shape must be [depth, height, width]");
+        }
+        if (inputChannels < 1) {
+            throw new IllegalArgumentException("Input channels must be >= 1");
+        }
+        if (numClasses < 2) {
+            throw new IllegalArgumentException("Number of classes must be >= 2");
         }
 
-        logger.info("Model initialized on device: {}", deviceType);
+        this.modelName = modelName;
+        this.inputChannels = inputChannels;
+        this.numClasses = numClasses;
+        this.inputShape = inputShape;
+        this.classDefinitions = new HashMap<>();
+        this.isBuilt = false;
+
+        // Initialize device
+        DeepLearningConfig config = DeepLearningConfig.getInstance();
+        String deviceStr = config.getDevice();
+        this.device = deviceStr.equals("cuda") ? new Device(DeviceType.CUDA, 0) : new Device(DeviceType.CPU);
     }
 
+    // Abstract methods that subclasses must implement
+
     /**
-     * Forward pass through the model.
-     * Must be implemented by concrete model classes.
+     * Build the network architecture.
+     * Subclasses should create and configure their neural network layers here.
+     */
+    protected abstract void buildArchitecture();
+
+    /**
+     * Forward pass through the network.
      *
-     * @param input Input tensor
-     * @return Output tensor or model-specific output object
+     * @param input Input tensor with shape [batch, channels, depth, height, width]
+     * @return Output tensor with shape [batch, numClasses]
      */
-    public abstract Object forward(Tensor input);
+    public abstract Tensor forward(Tensor input);
 
     /**
-     * Sets the model to training mode.
-     * Enables dropout, batch normalization training behavior, etc.
+     * Initialize model weights using appropriate initialization strategy.
+     * Called after buildArchitecture().
      */
-    public void train() {
-        this.isTraining = true;
-        super.train(true);
-        logger.debug("Model set to training mode");
-    }
+    protected abstract void initializeWeights();
+
+    // Concrete methods
 
     /**
-     * Sets the model to evaluation mode.
-     * Disables dropout, uses running stats for batch norm, etc.
+     * Build the model if not already built
      */
-    public void eval() {
-        this.isTraining = false;
-        super.train(false);
-        logger.debug("Model set to evaluation mode");
-    }
-
-    /**
-     * Checks if model is in training mode.
-     *
-     * @return true if in training mode
-     */
-    public boolean isTraining() {
-        return isTraining;
-    }
-
-    /**
-     * Moves the model to GPU if available.
-     */
-    public void toGPU() {
-        if (cuda_is_available()) {
-            this.to(kCUDA);
-            this.useGPU = true;
-            this.deviceType = "CUDA";
-            logger.info("Model moved to GPU");
-        } else {
-            logger.warn("CUDA not available, model remains on CPU");
+    public void build() {
+        if (!isBuilt) {
+            buildArchitecture();
+            initializeWeights();
+            toDevice(device);
+            isBuilt = true;
         }
     }
 
     /**
-     * Moves the model to CPU.
+     * Move model to specified device (CPU or GPU)
+     */
+    public void toDevice(Device device) {
+        if (network != null) {
+            network.to(device);
+            this.device = device;
+        }
+    }
+
+    /**
+     * Move model to CPU
      */
     public void toCPU() {
-        this.to(kCPU);
-        this.useGPU = false;
-        this.deviceType = "CPU";
-        logger.info("Model moved to CPU");
+        toDevice(new Device(DeviceType.CPU));
     }
 
     /**
-     * Gets the current device type.
-     *
-     * @return "CUDA" or "CPU"
+     * Move model to GPU
      */
-    public String getDeviceType() {
-        return deviceType;
+    public void toGPU() {
+        toDevice(new Device(DeviceType.CUDA, 0));
     }
 
     /**
-     * Checks if model is using GPU.
-     *
-     * @return true if using GPU
+     * Set model to training mode
      */
-    public boolean isUsingGPU() {
-        return useGPU;
+    public void train() {
+        if (network != null) {
+            network.train();
+        }
     }
 
     /**
-     * Counts the total number of trainable parameters.
-     *
-     * @return Number of parameters
+     * Set model to evaluation mode
      */
-    public long countParameters() {
-        long totalParams = 0;
+    public void eval() {
+        if (network != null) {
+            network.eval();
+        }
+    }
 
-        // Note: JavaCPP PyTorch API may differ from Python API
-        // This is a placeholder - actual implementation depends on API
+    /**
+     * Predict class labels for input tensor.
+     * Returns the class with highest probability.
+     *
+     * @param input Input tensor [batch, channels, depth, height, width]
+     * @return Array of predicted class IDs
+     */
+    public int[] predict(Tensor input) {
+        if (!isBuilt) {
+            build();
+        }
+
+        eval();
+
+        // Disable gradient computation for inference
+        NoGradGuard guard = new NoGradGuard();
+
         try {
-            // Iterate through named parameters if API supports it
-            // For now, return -1 to indicate not implemented
-            logger.warn("Parameter counting not yet implemented in JavaCPP API");
-            return -1;
-        } catch (Exception e) {
-            logger.error("Error counting parameters", e);
-            return -1;
+            // Forward pass
+            Tensor output = forward(input);
+
+            // Get class with max probability
+            Tensor predictions = argmax(output, 1);
+
+            // Convert to int array
+            long batchSize = predictions.size(0);
+            int[] results = new int[(int) batchSize];
+
+            LongPointer dataPtr = predictions.data_ptr_long();
+            for (int i = 0; i < batchSize; i++) {
+                results[i] = (int) dataPtr.get(i);
+            }
+
+            return results;
+
+        } finally {
+            guard.close();
         }
     }
 
     /**
-     * Gets model summary information.
+     * Predict class probabilities for input tensor.
      *
-     * @return String describing model architecture
+     * @param input Input tensor [batch, channels, depth, height, width]
+     * @return 2D array of probabilities [batch][class]
      */
-    public String getSummary() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Model: ").append(this.getClass().getSimpleName()).append("\n");
-        sb.append("Device: ").append(deviceType).append("\n");
-        sb.append("Training mode: ").append(isTraining).append("\n");
-
-        long params = countParameters();
-        if (params >= 0) {
-            sb.append("Parameters: ").append(params).append("\n");
+    public float[][] predictProba(Tensor input) {
+        if (!isBuilt) {
+            build();
         }
 
-        return sb.toString();
-    }
+        eval();
 
-    /**
-     * Initializes model weights using Kaiming (He) normal initialization.
-     * Appropriate for ReLU/LeakyReLU activations.
-     *
-     * <p>Note: Actual implementation depends on JavaCPP PyTorch API capabilities.</p>
-     */
-    protected void initializeWeightsKaiming() {
-        logger.info("Initializing weights with Kaiming normal");
-        // Implementation depends on JavaCPP API for accessing and initializing parameters
-        // This is a placeholder
-    }
+        NoGradGuard guard = new NoGradGuard();
 
-    /**
-     * Initializes model weights using Xavier (Glorot) normal initialization.
-     * Appropriate for Tanh/Sigmoid activations.
-     *
-     * <p>Note: Actual implementation depends on JavaCPP PyTorch API capabilities.</p>
-     */
-    protected void initializeWeightsXavier() {
-        logger.info("Initializing weights with Xavier normal");
-        // Implementation depends on JavaCPP API for accessing and initializing parameters
-        // This is a placeholder
-    }
-
-    /**
-     * Saves the model to a file.
-     *
-     * @param filepath Path to save the model
-     * @throws RuntimeException if save fails
-     */
-    public void save(String filepath) {
         try {
-            save(filepath);
-            logger.info("Model saved to: {}", filepath);
-        } catch (Exception e) {
-            logger.error("Failed to save model to: {}", filepath, e);
-            throw new RuntimeException("Model save failed", e);
+            // Forward pass
+            Tensor output = forward(input);
+
+            // Apply softmax to get probabilities
+            Tensor probabilities = softmax(output, 1);
+
+            // Convert to 2D float array
+            long batchSize = probabilities.size(0);
+            long numClasses = probabilities.size(1);
+
+            float[][] results = new float[(int) batchSize][(int) numClasses];
+
+            FloatPointer dataPtr = probabilities.data_ptr_float();
+            for (int i = 0; i < batchSize; i++) {
+                for (int j = 0; j < numClasses; j++) {
+                    results[i][j] = dataPtr.get(i * numClasses + j);
+                }
+            }
+
+            return results;
+
+        } finally {
+            guard.close();
         }
     }
 
     /**
-     * Loads the model from a file.
-     *
-     * @param filepath Path to load the model from
-     * @throws RuntimeException if load fails
-     */
-    public void load(String filepath) {
-        try {
-            // Note: JavaCPP load mechanism may differ
-            logger.info("Model loaded from: {}", filepath);
-        } catch (Exception e) {
-            logger.error("Failed to load model from: {}", filepath, e);
-            throw new RuntimeException("Model load failed", e);
-        }
-    }
-
-    /**
-     * Validates input tensor dimensions.
+     * Predict with class names instead of IDs
      *
      * @param input Input tensor
-     * @param expectedDims Expected number of dimensions
-     * @throws IllegalArgumentException if dimensions don't match
+     * @return Array of predicted class names
      */
-    protected void validateInputDimensions(Tensor input, int expectedDims) {
-        long[] shape = input.sizes();
-        if (shape.length != expectedDims) {
-            throw new IllegalArgumentException(
-                String.format("Expected %dD tensor, got %dD: %s",
-                            expectedDims, shape.length,
-                            java.util.Arrays.toString(shape)));
+    public String[] predictClassNames(Tensor input) {
+        int[] classIds = predict(input);
+        String[] classNames = new String[classIds.length];
+
+        for (int i = 0; i < classIds.length; i++) {
+            ClassDefinition def = classDefinitions.get(classIds[i]);
+            classNames[i] = def != null ? def.getClassName() : "Unknown_" + classIds[i];
         }
+
+        return classNames;
     }
 
     /**
-     * Ensures tensor is on the correct device (CPU or GPU).
+     * Get detailed prediction results including class name and probability
      *
-     * @param tensor Input tensor
-     * @return Tensor on correct device
+     * @param input Input tensor
+     * @return Array of prediction results
      */
-    protected Tensor ensureCorrectDevice(Tensor tensor) {
-        if (useGPU && !tensor.is_cuda()) {
-            return tensor.cuda();
-        } else if (!useGPU && tensor.is_cuda()) {
-            return tensor.cpu();
+    public PredictionResult[] predictDetailed(Tensor input) {
+        int[] classIds = predict(input);
+        float[][] probabilities = predictProba(input);
+
+        PredictionResult[] results = new PredictionResult[classIds.length];
+
+        for (int i = 0; i < classIds.length; i++) {
+            int classId = classIds[i];
+            String className = getClassName(classId);
+            float probability = probabilities[i][classId];
+
+            results[i] = new PredictionResult(classId, className, probability, probabilities[i]);
         }
-        return tensor;
+
+        return results;
+    }
+
+    /**
+     * Save model state to file.
+     * Saves both the model weights and metadata.
+     *
+     * @param filepath Path to save the model
+     */
+    public void save(String filepath) throws IOException {
+        if (!isBuilt) {
+            throw new IllegalStateException("Cannot save model that has not been built");
+        }
+
+        // Create parent directory if needed
+        File file = new File(filepath);
+        File parentDir = file.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+        }
+
+        // Save PyTorch model weights
+        String weightsPath = filepath + ".pt";
+        save(network, weightsPath);
+
+        // Save metadata (class definitions, config, etc.)
+        String metadataPath = filepath + ".meta";
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(metadataPath))) {
+            ModelMetadata metadata = new ModelMetadata();
+            metadata.modelName = this.modelName;
+            metadata.inputChannels = this.inputChannels;
+            metadata.numClasses = this.numClasses;
+            metadata.inputShape = this.inputShape;
+            metadata.classDefinitions = this.classDefinitions;
+            metadata.modelClass = this.getClass().getName();
+
+            oos.writeObject(metadata);
+        }
+
+        System.out.println("Model saved to: " + filepath);
+    }
+
+    /**
+     * Load model state from file.
+     *
+     * @param filepath Path to load the model from
+     */
+    public void load(String filepath) throws IOException {
+        // Load metadata first
+        String metadataPath = filepath + ".meta";
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(metadataPath))) {
+            ModelMetadata metadata = (ModelMetadata) ois.readObject();
+
+            // Verify compatibility
+            if (!this.getClass().getName().equals(metadata.modelClass)) {
+                throw new IOException("Model class mismatch: expected " + this.getClass().getName() +
+                                    ", found " + metadata.modelClass);
+            }
+
+            // Restore metadata
+            this.modelName = metadata.modelName;
+            this.inputChannels = metadata.inputChannels;
+            this.numClasses = metadata.numClasses;
+            this.inputShape = metadata.inputShape;
+            this.classDefinitions = metadata.classDefinitions;
+
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Failed to load model metadata", e);
+        }
+
+        // Build architecture
+        if (!isBuilt) {
+            build();
+        }
+
+        // Load PyTorch weights
+        String weightsPath = filepath + ".pt";
+        load(network, weightsPath);
+
+        System.out.println("Model loaded from: " + filepath);
+    }
+
+    /**
+     * Get number of trainable parameters in the model
+     */
+    public long getParameterCount() {
+        if (!isBuilt) {
+            build();
+        }
+
+        long count = 0;
+        NamedParameterIterator params = network.named_parameters();
+
+        while (params.hasNext()) {
+            Tensor param = params.next().value();
+            long[] shape = new long[(int) param.dim()];
+            for (int i = 0; i < shape.length; i++) {
+                shape[i] = param.size(i);
+            }
+
+            long paramCount = 1;
+            for (long dim : shape) {
+                paramCount *= dim;
+            }
+            count += paramCount;
+        }
+
+        return count;
+    }
+
+    /**
+     * Get memory footprint estimate in MB
+     */
+    public double getMemoryFootprintMB() {
+        long paramCount = getParameterCount();
+        // Assume float32 (4 bytes per parameter)
+        return (paramCount * 4.0) / (1024.0 * 1024.0);
+    }
+
+    // Class definition management
+
+    /**
+     * Set class definitions for human-readable results
+     */
+    public void setClassDefinitions(HashMap<Integer, ClassDefinition> classDefinitions) {
+        if (classDefinitions != null && classDefinitions.size() != numClasses) {
+            throw new IllegalArgumentException("Number of class definitions must match numClasses");
+        }
+        this.classDefinitions = classDefinitions != null ? classDefinitions : new HashMap<>();
+    }
+
+    /**
+     * Get class definitions
+     */
+    public HashMap<Integer, ClassDefinition> getClassDefinitions() {
+        return classDefinitions;
+    }
+
+    /**
+     * Get class name for a given ID
+     */
+    public String getClassName(int classId) {
+        ClassDefinition def = classDefinitions.get(classId);
+        return def != null ? def.getClassName() : "Class_" + classId;
+    }
+
+    /**
+     * Set class name for a given ID
+     */
+    public void setClassName(int classId, String name) {
+        ClassDefinition def = classDefinitions.get(classId);
+        if (def != null) {
+            def.setClassName(name);
+        } else {
+            classDefinitions.put(classId, new ClassDefinition(classId, name));
+        }
+    }
+
+    // Getters
+
+    public String getModelName() {
+        return modelName;
+    }
+
+    public int getInputChannels() {
+        return inputChannels;
+    }
+
+    public int getNumClasses() {
+        return numClasses;
+    }
+
+    public int[] getInputShape() {
+        return inputShape;
+    }
+
+    public Device getDevice() {
+        return device;
+    }
+
+    public boolean isBuilt() {
+        return isBuilt;
+    }
+
+    public Module getNetwork() {
+        return network;
     }
 
     @Override
     public String toString() {
-        return getSummary();
+        return String.format("%s[name=%s, input=%dx%dx%dx%d, classes=%d, params=%d, device=%s]",
+                           getClass().getSimpleName(), modelName,
+                           inputChannels, inputShape[0], inputShape[1], inputShape[2],
+                           numClasses, isBuilt ? getParameterCount() : 0,
+                           device != null ? device.str().getString() : "unknown");
+    }
+
+    /**
+     * Container for prediction results
+     */
+    public static class PredictionResult {
+        public final int classId;
+        public final String className;
+        public final float probability;
+        public final float[] allProbabilities;
+
+        public PredictionResult(int classId, String className, float probability, float[] allProbabilities) {
+            this.classId = classId;
+            this.className = className;
+            this.probability = probability;
+            this.allProbabilities = allProbabilities;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("PredictionResult[class=%s (id=%d), prob=%.3f]",
+                               className, classId, probability);
+        }
+    }
+
+    /**
+     * Container for model metadata (for serialization)
+     */
+    private static class ModelMetadata implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        String modelName;
+        int inputChannels;
+        int numClasses;
+        int[] inputShape;
+        HashMap<Integer, ClassDefinition> classDefinitions;
+        String modelClass;
     }
 }

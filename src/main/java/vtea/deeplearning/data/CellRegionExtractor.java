@@ -1,342 +1,386 @@
+/*
+ * Copyright (C) 2025 University of Nebraska
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
 package vtea.deeplearning.data;
 
 import ij.ImageStack;
-import ij.process.FloatProcessor;
+import ij.process.ImageProcessor;
 import vteaobjects.MicroObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Extracts 3D cubic regions centered on cell centroids from volumetric image data.
+ * Utility class for extracting 3D cubic regions around segmented cells (MicroObjects).
+ * Handles boundary cases with various padding strategies.
  *
- * <p>This class is responsible for extracting fixed-size 3D regions around
- * segmented cells (MicroObjects) from the full image volume. These regions
- * are used as input to deep learning models.</p>
+ * Supports two APIs:
+ * 1. Static methods for multi-channel extraction (classification workflows)
+ * 2. Instance methods for single-channel extraction (VAE workflows)
  *
- * <p>Features:</p>
- * <ul>
- *   <li>Configurable region size (32³, 64³, 128³)</li>
- *   <li>Multiple padding strategies for boundary cells</li>
- *   <li>Multi-channel support</li>
- *   <li>Automatic centering on cell centroid</li>
- * </ul>
- *
- * @author VTEA Development Team
- * @version 1.0
+ * @author VTEA Deep Learning Team
  */
 public class CellRegionExtractor {
 
-    private static final Logger logger = LoggerFactory.getLogger(CellRegionExtractor.class);
-
+    // Instance fields for VAE-style API
     private final int regionSize;
     private final PaddingType paddingType;
 
     /**
-     * Padding strategies for regions that extend beyond image boundaries.
+     * Padding strategies for handling boundary cases
      */
     public enum PaddingType {
-        /** Pad with zeros */
-        ZERO,
-
-        /** Mirror reflect at boundaries */
-        MIRROR,
-
-        /** Replicate edge values */
-        REPLICATE,
-
-        /** Crop to available region (may result in smaller output) */
-        CROP
+        ZERO,       // Pad with zeros
+        MIRROR,     // Mirror the edge pixels
+        REPLICATE   // Replicate the edge pixels
     }
 
     /**
-     * Creates a CellRegionExtractor with specified region size and padding.
+     * Extract a 3D cubic region around a MicroObject centroid from multi-channel ImageStacks.
      *
-     * @param regionSize The size of the cubic region to extract (e.g., 64 for 64³)
-     * @param paddingType The padding strategy for boundary regions
+     * @param object       MicroObject to extract region around
+     * @param imageStacks  Array of ImageStacks (one per channel)
+     * @param regionSize   Size of the region [depth, height, width]
+     * @param channels     Channel indices to extract (null = all channels)
+     * @param paddingType  How to handle boundaries
+     * @return Array of ImageStacks (one per channel) containing the extracted region
      */
-    public CellRegionExtractor(int regionSize, PaddingType paddingType) {
-        if (regionSize <= 0 || !isPowerOfTwo(regionSize)) {
-            throw new IllegalArgumentException(
-                "Region size must be a positive power of 2, got: " + regionSize);
+    public static ImageStack[] extractRegion(MicroObject object, ImageStack[] imageStacks,
+                                              int[] regionSize, int[] channels,
+                                              PaddingType paddingType) {
+        if (object == null) {
+            throw new IllegalArgumentException("MicroObject cannot be null");
         }
-
-        this.regionSize = regionSize;
-        this.paddingType = paddingType;
-
-        logger.info("CellRegionExtractor initialized: regionSize={}, padding={}",
-                   regionSize, paddingType);
-    }
-
-    /**
-     * Creates a CellRegionExtractor with default settings (64³, MIRROR padding).
-     */
-    public CellRegionExtractor() {
-        this(64, PaddingType.MIRROR);
-    }
-
-    /**
-     * Extracts a 3D region around a cell from a single-channel image.
-     *
-     * @param cell The MicroObject representing the segmented cell
-     * @param imageStack The source image volume
-     * @return ImageStack containing the extracted region (regionSize³)
-     */
-    public ImageStack extractRegion(MicroObject cell, ImageStack imageStack) {
-        if (cell == null) {
-            throw new IllegalArgumentException("MicroObject is null");
-        }
-        if (imageStack == null) {
-            throw new IllegalArgumentException("ImageStack is null");
-        }
-
-        // Get centroid coordinates
-        double[] centroid = cell.getCentroidGlobal();
-        int cx = (int) Math.round(centroid[0]);
-        int cy = (int) Math.round(centroid[1]);
-        int cz = (int) Math.round(centroid[2]);
-
-        logger.debug("Extracting region for cell at ({}, {}, {})", cx, cy, cz);
-
-        // Calculate region bounds
-        int halfSize = regionSize / 2;
-        int x0 = cx - halfSize;
-        int y0 = cy - halfSize;
-        int z0 = cz - halfSize;
-        int x1 = x0 + regionSize;
-        int y1 = y0 + regionSize;
-        int z1 = z0 + regionSize;
-
-        // Extract region
-        return extractRegion(imageStack, x0, y0, z0, x1, y1, z1);
-    }
-
-    /**
-     * Extracts a 3D region from multi-channel images.
-     *
-     * @param cell The MicroObject representing the segmented cell
-     * @param imageStacks Array of ImageStacks, one per channel
-     * @return Array of ImageStacks containing the extracted regions
-     */
-    public ImageStack[] extractRegion(MicroObject cell, ImageStack[] imageStacks) {
         if (imageStacks == null || imageStacks.length == 0) {
-            throw new IllegalArgumentException("ImageStacks array is null or empty");
+            throw new IllegalArgumentException("ImageStacks array cannot be null or empty");
+        }
+        if (regionSize == null || regionSize.length != 3) {
+            throw new IllegalArgumentException("Region size must be [depth, height, width]");
         }
 
-        ImageStack[] regions = new ImageStack[imageStacks.length];
-
-        for (int c = 0; c < imageStacks.length; c++) {
-            regions[c] = extractRegion(cell, imageStacks[c]);
+        // Determine which channels to extract
+        int[] channelIndices = channels;
+        if (channelIndices == null) {
+            channelIndices = new int[imageStacks.length];
+            for (int i = 0; i < channelIndices.length; i++) {
+                channelIndices[i] = i;
+            }
         }
 
-        return regions;
-    }
+        // Get object centroid
+        float centroidX = object.getCentroidX();
+        float centroidY = object.getCentroidY();
+        float centroidZ = object.getCentroidZ();
 
-    /**
-     * Extracts a 3D region with specified bounds from an ImageStack.
-     *
-     * @param source Source ImageStack
-     * @param x0 Start x coordinate (inclusive)
-     * @param y0 Start y coordinate (inclusive)
-     * @param z0 Start z coordinate (inclusive, 0-indexed)
-     * @param x1 End x coordinate (exclusive)
-     * @param y1 End y coordinate (exclusive)
-     * @param z1 End z coordinate (exclusive, 0-indexed)
-     * @return Extracted region as ImageStack
-     */
-    private ImageStack extractRegion(ImageStack source,
-                                    int x0, int y0, int z0,
-                                    int x1, int y1, int z1) {
-        int srcWidth = source.getWidth();
-        int srcHeight = source.getHeight();
-        int srcDepth = source.getSize();
+        // Calculate bounding box for extraction
+        int halfDepth = regionSize[0] / 2;
+        int halfHeight = regionSize[1] / 2;
+        int halfWidth = regionSize[2] / 2;
 
-        int dstWidth = x1 - x0;
-        int dstHeight = y1 - y0;
-        int dstDepth = z1 - z0;
+        int startZ = Math.round(centroidZ) - halfDepth;
+        int startY = Math.round(centroidY) - halfHeight;
+        int startX = Math.round(centroidX) - halfWidth;
 
-        ImageStack destination = new ImageStack(dstWidth, dstHeight);
+        int endZ = startZ + regionSize[0];
+        int endY = startY + regionSize[1];
+        int endX = startX + regionSize[2];
 
-        // Extract each slice
-        for (int z = 0; z < dstDepth; z++) {
-            FloatProcessor fp = new FloatProcessor(dstWidth, dstHeight);
+        // Get image dimensions
+        int imgWidth = imageStacks[0].getWidth();
+        int imgHeight = imageStacks[0].getHeight();
+        int imgDepth = imageStacks[0].getSize();
 
-            for (int y = 0; y < dstHeight; y++) {
-                for (int x = 0; x < dstWidth; x++) {
-                    int srcX = x0 + x;
-                    int srcY = y0 + y;
-                    int srcZ = z0 + z;
+        // Extract region for each channel
+        ImageStack[] extractedRegions = new ImageStack[channelIndices.length];
 
-                    float value = getPixelValue(source, srcX, srcY, srcZ,
-                                               srcWidth, srcHeight, srcDepth);
-                    fp.setf(x, y, value);
+        for (int c = 0; c < channelIndices.length; c++) {
+            ImageStack sourceStack = imageStacks[channelIndices[c]];
+            ImageStack regionStack = new ImageStack(regionSize[2], regionSize[1], regionSize[0]);
+
+            for (int z = 0; z < regionSize[0]; z++) {
+                int sourceZ = startZ + z;
+                ImageProcessor sliceProcessor = new ij.process.FloatProcessor(regionSize[2], regionSize[1]);
+
+                for (int y = 0; y < regionSize[1]; y++) {
+                    int sourceY = startY + y;
+
+                    for (int x = 0; x < regionSize[2]; x++) {
+                        int sourceX = startX + x;
+
+                        float value;
+                        if (sourceX >= 0 && sourceX < imgWidth &&
+                            sourceY >= 0 && sourceY < imgHeight &&
+                            sourceZ >= 0 && sourceZ < imgDepth) {
+                            // Inside image bounds - get actual pixel value
+                            ImageProcessor sourceProc = sourceStack.getProcessor(sourceZ + 1);
+                            value = sourceProc.getPixelValue(sourceX, sourceY);
+                        } else {
+                            // Outside image bounds - apply padding
+                            value = getPaddedValue(sourceStack, sourceX, sourceY, sourceZ,
+                                                    imgWidth, imgHeight, imgDepth, paddingType);
+                        }
+
+                        sliceProcessor.setf(x, y, value);
+                    }
                 }
+
+                regionStack.setProcessor(sliceProcessor, z + 1);
             }
 
-            destination.addSlice("z=" + (z + 1), fp);
+            extractedRegions[c] = regionStack;
         }
 
-        return destination;
+        return extractedRegions;
     }
 
     /**
-     * Gets pixel value with boundary handling according to padding type.
+     * Convenience method with default padding type (ZERO)
      */
-    private float getPixelValue(ImageStack stack, int x, int y, int z,
-                               int width, int height, int depth) {
-        // Check if coordinates are within bounds
-        boolean inBounds = (x >= 0 && x < width &&
-                           y >= 0 && y < height &&
-                           z >= 0 && z < depth);
+    public static ImageStack[] extractRegion(MicroObject object, ImageStack[] imageStacks,
+                                              int[] regionSize, int[] channels) {
+        return extractRegion(object, imageStacks, regionSize, channels, PaddingType.ZERO);
+    }
 
-        if (inBounds) {
-            // Direct access (z is 0-indexed for our purposes, but ImageStack is 1-indexed)
-            return stack.getProcessor(z + 1).getf(x, y);
+    /**
+     * Extract regions for multiple objects in batch
+     *
+     * @param objects      List of MicroObjects
+     * @param imageStacks  Multi-channel image stacks
+     * @param regionSize   Size of regions to extract
+     * @param channels     Channels to include
+     * @param paddingType  Padding strategy
+     * @return List of extracted region arrays
+     */
+    public static List<ImageStack[]> extractBatch(List<MicroObject> objects,
+                                                    ImageStack[] imageStacks,
+                                                    int[] regionSize,
+                                                    int[] channels,
+                                                    PaddingType paddingType) {
+        List<ImageStack[]> batch = new ArrayList<>();
+
+        for (MicroObject object : objects) {
+            ImageStack[] region = extractRegion(object, imageStacks, regionSize, channels, paddingType);
+            batch.add(region);
         }
 
-        // Handle out-of-bounds according to padding type
+        return batch;
+    }
+
+    /**
+     * Get padded value for coordinates outside image bounds
+     */
+    private static float getPaddedValue(ImageStack stack, int x, int y, int z,
+                                         int width, int height, int depth,
+                                         PaddingType paddingType) {
         switch (paddingType) {
             case ZERO:
                 return 0.0f;
 
             case MIRROR:
-                return getMirrorPixel(stack, x, y, z, width, height, depth);
+                // Mirror coordinates at boundaries
+                int mirrorX = mirrorCoordinate(x, width);
+                int mirrorY = mirrorCoordinate(y, height);
+                int mirrorZ = mirrorCoordinate(z, depth);
+                ImageProcessor proc = stack.getProcessor(mirrorZ + 1);
+                return proc.getPixelValue(mirrorX, mirrorY);
 
             case REPLICATE:
-                return getReplicatePixel(stack, x, y, z, width, height, depth);
-
-            case CROP:
-                // For CROP, we should have already handled this at extraction level
-                return 0.0f;
+                // Clamp coordinates to valid range
+                int clampX = Math.max(0, Math.min(x, width - 1));
+                int clampY = Math.max(0, Math.min(y, height - 1));
+                int clampZ = Math.max(0, Math.min(z, depth - 1));
+                ImageProcessor clampProc = stack.getProcessor(clampZ + 1);
+                return clampProc.getPixelValue(clampX, clampY);
 
             default:
-                throw new IllegalStateException("Unknown padding type: " + paddingType);
+                return 0.0f;
         }
     }
 
     /**
-     * Gets pixel value using mirror reflection at boundaries.
+     * Mirror coordinate at boundaries
+     * Example: -1 -> 1, -2 -> 2, width -> width-2, width+1 -> width-1
      */
-    private float getMirrorPixel(ImageStack stack, int x, int y, int z,
-                                int width, int height, int depth) {
-        // Mirror reflect coordinates
-        x = mirrorCoordinate(x, width);
-        y = mirrorCoordinate(y, height);
-        z = mirrorCoordinate(z, depth);
-
-        return stack.getProcessor(z + 1).getf(x, y);
-    }
-
-    /**
-     * Gets pixel value by replicating edge values.
-     */
-    private float getReplicatePixel(ImageStack stack, int x, int y, int z,
-                                   int width, int height, int depth) {
-        // Clamp coordinates to valid range
-        x = Math.max(0, Math.min(x, width - 1));
-        y = Math.max(0, Math.min(y, height - 1));
-        z = Math.max(0, Math.min(z, depth - 1));
-
-        return stack.getProcessor(z + 1).getf(x, y);
-    }
-
-    /**
-     * Mirrors a coordinate to fall within valid range.
-     */
-    private int mirrorCoordinate(int coord, int size) {
+    private static int mirrorCoordinate(int coord, int size) {
         if (coord < 0) {
-            // Mirror on left/top side
-            coord = -coord - 1;
+            return Math.abs(coord);
         } else if (coord >= size) {
-            // Mirror on right/bottom side
-            coord = 2 * size - coord - 1;
+            return 2 * size - coord - 2;
+        } else {
+            return coord;
+        }
+    }
+
+    /**
+     * Check if a region can be extracted without padding
+     *
+     * @param object      MicroObject to check
+     * @param imageStacks Image stacks
+     * @param regionSize  Desired region size
+     * @return true if region fits entirely within image bounds
+     */
+    public static boolean canExtractWithoutPadding(MicroObject object, ImageStack[] imageStacks,
+                                                     int[] regionSize) {
+        if (imageStacks == null || imageStacks.length == 0) {
+            return false;
         }
 
-        // Ensure still in bounds (for multiple reflections)
-        coord = Math.max(0, Math.min(coord, size - 1));
+        float centroidX = object.getCentroidX();
+        float centroidY = object.getCentroidY();
+        float centroidZ = object.getCentroidZ();
 
-        return coord;
+        int halfDepth = regionSize[0] / 2;
+        int halfHeight = regionSize[1] / 2;
+        int halfWidth = regionSize[2] / 2;
+
+        int startZ = Math.round(centroidZ) - halfDepth;
+        int startY = Math.round(centroidY) - halfHeight;
+        int startX = Math.round(centroidX) - halfWidth;
+
+        int endZ = startZ + regionSize[0];
+        int endY = startY + regionSize[1];
+        int endX = startX + regionSize[2];
+
+        int imgWidth = imageStacks[0].getWidth();
+        int imgHeight = imageStacks[0].getHeight();
+        int imgDepth = imageStacks[0].getSize();
+
+        return startX >= 0 && endX <= imgWidth &&
+               startY >= 0 && endY <= imgHeight &&
+               startZ >= 0 && endZ <= imgDepth;
     }
 
     /**
-     * Checks if a number is a power of two.
+     * Get count of objects that require padding
      */
-    private boolean isPowerOfTwo(int n) {
-        return n > 0 && (n & (n - 1)) == 0;
+    public static int countObjectsRequiringPadding(List<MicroObject> objects,
+                                                     ImageStack[] imageStacks,
+                                                     int[] regionSize) {
+        int count = 0;
+        for (MicroObject object : objects) {
+            if (!canExtractWithoutPadding(object, imageStacks, regionSize)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
-     * Gets the configured region size.
+     * Filter objects to only include those that can be extracted without padding
+     */
+    public static List<MicroObject> filterObjectsWithinBounds(List<MicroObject> objects,
+                                                                ImageStack[] imageStacks,
+                                                                int[] regionSize) {
+        List<MicroObject> filtered = new ArrayList<>();
+        for (MicroObject object : objects) {
+            if (canExtractWithoutPadding(object, imageStacks, regionSize)) {
+                filtered.add(object);
+            }
+        }
+        return filtered;
+    }
+
+    /**
+     * Calculate optimal region size for a given object and image
+     * Returns the largest cubic region that can be extracted without padding
      *
-     * @return The cubic region size
+     * @param object      MicroObject
+     * @param imageStacks Image stacks
+     * @param maxSize     Maximum desired size
+     * @return Optimal region size [depth, height, width]
      */
-    public int getRegionSize() {
-        return regionSize;
-    }
-
-    /**
-     * Gets the configured padding type.
-     *
-     * @return The padding strategy
-     */
-    public PaddingType getPaddingType() {
-        return paddingType;
-    }
-
-    /**
-     * Estimates if a cell's region will require padding.
-     *
-     * @param cell The cell to check
-     * @param imageStack The source image
-     * @return true if padding will be needed
-     */
-    public boolean requiresPadding(MicroObject cell, ImageStack imageStack) {
-        double[] centroid = cell.getCentroidGlobal();
-        int cx = (int) Math.round(centroid[0]);
-        int cy = (int) Math.round(centroid[1]);
-        int cz = (int) Math.round(centroid[2]);
-
-        int halfSize = regionSize / 2;
-
-        int x0 = cx - halfSize;
-        int y0 = cy - halfSize;
-        int z0 = cz - halfSize;
-        int x1 = x0 + regionSize;
-        int y1 = y0 + regionSize;
-        int z1 = z0 + regionSize;
-
-        boolean needsPadding = (x0 < 0 || y0 < 0 || z0 < 0 ||
-                                x1 > imageStack.getWidth() ||
-                                y1 > imageStack.getHeight() ||
-                                z1 > imageStack.getSize());
-
-        if (needsPadding) {
-            logger.debug("Cell at ({}, {}, {}) requires padding", cx, cy, cz);
+    public static int[] calculateOptimalRegionSize(MicroObject object, ImageStack[] imageStacks,
+                                                     int maxSize) {
+        if (imageStacks == null || imageStacks.length == 0) {
+            return new int[]{maxSize, maxSize, maxSize};
         }
 
-        return needsPadding;
+        float centroidX = object.getCentroidX();
+        float centroidY = object.getCentroidY();
+        float centroidZ = object.getCentroidZ();
+
+        int imgWidth = imageStacks[0].getWidth();
+        int imgHeight = imageStacks[0].getHeight();
+        int imgDepth = imageStacks[0].getSize();
+
+        // Calculate maximum distance to boundaries in each dimension
+        int maxDistX = Math.min((int) centroidX, imgWidth - (int) centroidX - 1);
+        int maxDistY = Math.min((int) centroidY, imgHeight - (int) centroidY - 1);
+        int maxDistZ = Math.min((int) centroidZ, imgDepth - (int) centroidZ - 1);
+
+        // Take minimum to ensure cubic region fits
+        int optimalSize = Math.min(Math.min(maxDistX, maxDistY), maxDistZ) * 2;
+        optimalSize = Math.min(optimalSize, maxSize);
+
+        // Round down to nearest power of 2 for better compatibility with CNNs
+        int size = 1;
+        while (size * 2 <= optimalSize) {
+            size *= 2;
+        }
+
+        return new int[]{size, size, size};
+    }
+
+    // ===== INSTANCE-BASED API (for VAE workflows) =====
+
+    /**
+     * Creates a CellRegionExtractor with fixed region size and padding type.
+     * This constructor enables the instance-based API used by VAE workflows.
+     *
+     * @param regionSize The size of the cubic region (e.g., 64 for 64³)
+     * @param paddingType The padding strategy for boundary regions
+     */
+    public CellRegionExtractor(int regionSize, PaddingType paddingType) {
+        this.regionSize = regionSize;
+        this.paddingType = paddingType;
     }
 
     /**
-     * Calculates the bounding box for a cell's extraction region.
+     * Extract a 3D cubic region around a MicroObject from a single-channel ImageStack.
+     * Convenience method for VAE workflows that operate on single-channel data.
      *
-     * @param cell The cell
-     * @return int array [x0, y0, z0, x1, y1, z1]
+     * @param cell MicroObject to extract region around
+     * @param imageStack Single-channel ImageStack
+     * @return Extracted region as ImageStack
      */
-    public int[] getRegionBounds(MicroObject cell) {
-        double[] centroid = cell.getCentroidGlobal();
-        int cx = (int) Math.round(centroid[0]);
-        int cy = (int) Math.round(centroid[1]);
-        int cz = (int) Math.round(centroid[2]);
+    public ImageStack extractRegion(MicroObject cell, ImageStack imageStack) {
+        ImageStack[] result = extractRegion(
+            cell,
+            new ImageStack[]{imageStack},
+            new int[]{regionSize, regionSize, regionSize},
+            null,
+            paddingType
+        );
+        return result[0];
+    }
 
-        int halfSize = regionSize / 2;
-
-        return new int[]{
-            cx - halfSize,  // x0
-            cy - halfSize,  // y0
-            cz - halfSize,  // z0
-            cx + halfSize,  // x1
-            cy + halfSize,  // y1
-            cz + halfSize   // z1
-        };
+    /**
+     * Extract 3D cubic regions from multi-channel ImageStacks using instance configuration.
+     *
+     * @param cell MicroObject to extract region around
+     * @param imageStacks Array of ImageStacks (one per channel)
+     * @return Array of extracted regions (one per channel)
+     */
+    public ImageStack[] extractRegion(MicroObject cell, ImageStack[] imageStacks) {
+        return extractRegion(
+            cell,
+            imageStacks,
+            new int[]{regionSize, regionSize, regionSize},
+            null,
+            paddingType
+        );
     }
 }
