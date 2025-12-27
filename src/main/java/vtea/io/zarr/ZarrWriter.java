@@ -27,10 +27,14 @@ import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
 import net.imglib2.type.numeric.real.FloatType;
+import org.janelia.saalfeldlab.n5.Bzip2Compression;
 import org.janelia.saalfeldlab.n5.Compression;
 import org.janelia.saalfeldlab.n5.DataType;
 import org.janelia.saalfeldlab.n5.GzipCompression;
+import org.janelia.saalfeldlab.n5.Lz4Compression;
 import org.janelia.saalfeldlab.n5.N5Writer;
+import org.janelia.saalfeldlab.n5.RawCompression;
+import org.janelia.saalfeldlab.n5.XzCompression;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.saalfeldlab.n5.zarr.N5ZarrWriter;
 
@@ -52,12 +56,14 @@ public class ZarrWriter implements AutoCloseable {
     private int[] defaultChunkSize;
 
     /**
-     * Compression types supported
+     * Compression types supported by N5/Zarr
      */
     public enum CompressionType {
         NONE,
         GZIP,
-        BLOSC
+        LZ4,
+        BZIP2,
+        XZ
     }
 
     /**
@@ -86,14 +92,21 @@ public class ZarrWriter implements AutoCloseable {
             case GZIP:
                 this.compression = new GzipCompression();
                 break;
-            case BLOSC:
-                // Blosc compression would be configured here
-                // For now, fallback to GZIP
-                this.compression = new GzipCompression();
+            case LZ4:
+                // LZ4 compression with default block size (65536)
+                this.compression = new Lz4Compression();
+                break;
+            case BZIP2:
+                // Bzip2 compression with default block size (9 = best compression)
+                this.compression = new Bzip2Compression();
+                break;
+            case XZ:
+                // XZ compression with default preset (6 = balanced)
+                this.compression = new XzCompression();
                 break;
             case NONE:
             default:
-                this.compression = null;
+                this.compression = new RawCompression();
                 break;
         }
     }
