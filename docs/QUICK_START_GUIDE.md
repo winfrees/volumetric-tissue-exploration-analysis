@@ -374,9 +374,14 @@ File → Save As → TIFF
 
 **Export to Zarr**:
 ```java
-ZarrWriter writer = new ZarrWriter("/path/to/output.zarr");
+// With LZ4 compression for fast I/O
+ZarrWriter writer = new ZarrWriter("/path/to/output.zarr",
+    ZarrWriter.CompressionType.LZ4, new int[]{512, 512, 32});
 writer.writeSegmentationMask(labelMask, "segmentation");
+writer.close();
 ```
+
+**Compression Options**: `NONE`, `GZIP` (balanced), `LZ4` (fast), `BZIP2` (high ratio), `XZ` (highest ratio)
 
 ---
 

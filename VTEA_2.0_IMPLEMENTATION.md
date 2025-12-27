@@ -151,9 +151,17 @@ Writing segmentation results and processed images to Zarr:
 - Metadata preservation
 - Multi-channel support
 
+**Supported Compression Types:**
+- `NONE` - No compression (raw)
+- `GZIP` - GZip compression (balanced)
+- `LZ4` - Fast compression/decompression (recommended for speed)
+- `BZIP2` - High compression ratio (slower)
+- `XZ` - Very high compression ratio (slowest)
+
 **Example Usage:**
 ```java
-ZarrWriter writer = new ZarrWriter("/path/to/output.zarr", CompressionType.GZIP, new int[]{512, 512, 32});
+// Using LZ4 compression for fast I/O
+ZarrWriter writer = new ZarrWriter("/path/to/output.zarr", CompressionType.LZ4, new int[]{512, 512, 32});
 writer.writeImagePlus(imp, "processed", chunkSize);
 writer.setAttributes("processed", metadata);
 writer.close();
@@ -186,7 +194,8 @@ java vtea.utilities.conversion.TiffToZarrConverter input.tif output.zarr
 **Programmatic Usage:**
 ```java
 TiffToZarrConverter converter = new TiffToZarrConverter();
-converter.setCompressionType(CompressionType.GZIP);
+// Use LZ4 for fast compression, or GZIP for better compression ratio
+converter.setCompressionType(CompressionType.LZ4);
 converter.setChunkSize(new int[]{512, 512, 32});
 converter.setProgressCallback((msg, progress) -> System.out.println(msg));
 converter.convert("input.tif", "output.zarr", "data");
