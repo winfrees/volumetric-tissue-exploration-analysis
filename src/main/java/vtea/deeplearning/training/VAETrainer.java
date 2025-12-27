@@ -41,7 +41,7 @@ public class VAETrainer {
     private final VAELoss lossFunction;
     private final Adam optimizer;
     private final TrainingMetrics metrics;
-    private final ModelCheckpoint checkpoint;
+    private final VAEModelCheckpoint checkpoint;
 
     private final List<ProgressListener> progressListeners;
     private final boolean useGradientClipping;
@@ -89,7 +89,7 @@ public class VAETrainer {
         this.config = config;
         this.lossFunction = new VAELoss(config);
         this.metrics = new TrainingMetrics(10); // Patience of 10 epochs
-        this.checkpoint = new ModelCheckpoint(checkpointDir, true, 3);
+        this.checkpoint = new VAEModelCheckpoint(checkpointDir, true, 3);
         this.progressListeners = new ArrayList<>();
         this.useGradientClipping = useGradientClipping;
         this.gradientClipValue = gradientClipValue;

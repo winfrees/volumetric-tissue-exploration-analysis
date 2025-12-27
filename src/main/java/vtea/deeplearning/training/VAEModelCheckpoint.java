@@ -35,7 +35,7 @@ import java.util.Map;
  * @author VTEA Development Team
  * @version 1.0
  */
-public class ModelCheckpoint {
+public class VAEModelCheckpoint {
 
     private static final Logger logger = LoggerFactory.getLogger(ModelCheckpoint.class);
 
@@ -58,7 +58,7 @@ public class ModelCheckpoint {
      * @param saveOnlyBest Whether to save only best models
      * @param keepLast Number of recent checkpoints to keep (0 = keep all)
      */
-    public ModelCheckpoint(String checkpointDir, boolean saveOnlyBest, int keepLast) {
+    public VAEModelCheckpoint(String checkpointDir, boolean saveOnlyBest, int keepLast) {
         if (checkpointDir == null || checkpointDir.isEmpty()) {
             throw new IllegalArgumentException("Checkpoint directory cannot be null/empty");
         }
@@ -85,7 +85,7 @@ public class ModelCheckpoint {
      *
      * @param checkpointDir Directory to save checkpoints
      */
-    public ModelCheckpoint(String checkpointDir) {
+    public VAEModelCheckpoint(String checkpointDir) {
         this(checkpointDir, false, 3); // Keep last 3 checkpoints by default
     }
 
