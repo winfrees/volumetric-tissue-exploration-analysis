@@ -1,351 +1,371 @@
+/*
+ * Copyright (C) 2025 University of Nebraska
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
 package vtea.deeplearning.training;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import org.bytedeco.pytorch.Module;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import vtea.deeplearning.models.VAEConfig;
-import vtea.deeplearning.models.VariationalAutoencoder3D;
+import vtea.deeplearning.models.AbstractDeepLearningModel;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.Map;
+import java.nio.file.*;
+import java.util.*;
 
 /**
- * Handles saving and loading of trained models with metadata.
+ * ModelCheckpoint callback for saving models during training.
+ * Implements advanced checkpoint management including:
+ * - Save best model based on validation metric
+ * - Keep only top-K models
+ * - Save training configuration with model
+ * - Automatic cleanup of old checkpoints
  *
- * <p>Integrates with VTEA's file persistence patterns and provides
- * checkpointing capabilities for training resumption.</p>
- *
- * <p>Saved checkpoint includes:</p>
- * <ul>
- *   <li>Model state (PyTorch parameters)</li>
- *   <li>Model configuration (VAEConfig as JSON)</li>
- *   <li>Training metrics</li>
- *   <li>Epoch number</li>
- *   <li>Timestamp and metadata</li>
- * </ul>
- *
- * @author VTEA Development Team
- * @version 1.0
+ * @author VTEA Deep Learning Team
  */
-public class ModelCheckpoint {
+public class ModelCheckpoint implements Trainer.TrainingCallback {
 
-    private static final Logger logger = LoggerFactory.getLogger(ModelCheckpoint.class);
-
-    private static final String MODEL_WEIGHTS_FILE = "model.pt";
-    private static final String CONFIG_FILE = "config.json";
-    private static final String METADATA_FILE = "metadata.json";
-    private static final String METRICS_FILE = "metrics.csv";
-
+    private final AbstractDeepLearningModel model;
     private final String checkpointDir;
+    private final String modelName;
     private final boolean saveOnlyBest;
-    private final int keepLast; // Number of recent checkpoints to keep
+    private final int keepTopK;  // Keep only top K models (0 = keep all)
+    private final String monitorMetric;  // "val_acc" or "val_bal_acc"
+    private final boolean verbose;
 
-    private double bestLoss;
-    private int checkpointCount;
+    // State tracking
+    private double bestMetric;
+    private int bestEpoch;
+    private String bestModelPath;
+    private List<CheckpointInfo> savedCheckpoints;
 
     /**
-     * Creates a ModelCheckpoint handler.
-     *
-     * @param checkpointDir Directory to save checkpoints
-     * @param saveOnlyBest Whether to save only best models
-     * @param keepLast Number of recent checkpoints to keep (0 = keep all)
+     * Checkpoint information
      */
-    public ModelCheckpoint(String checkpointDir, boolean saveOnlyBest, int keepLast) {
-        if (checkpointDir == null || checkpointDir.isEmpty()) {
-            throw new IllegalArgumentException("Checkpoint directory cannot be null/empty");
+    private static class CheckpointInfo implements Comparable<CheckpointInfo> {
+        public final int epoch;
+        public final double metric;
+        public final String path;
+
+        public CheckpointInfo(int epoch, double metric, String path) {
+            this.epoch = epoch;
+            this.metric = metric;
+            this.path = path;
         }
 
+        @Override
+        public int compareTo(CheckpointInfo other) {
+            return Double.compare(other.metric, this.metric);  // Descending order
+        }
+    }
+
+    /**
+     * Constructor with default settings
+     */
+    public ModelCheckpoint(AbstractDeepLearningModel model, String checkpointDir, String modelName) {
+        this(model, checkpointDir, modelName, true, 5, "val_bal_acc", true);
+    }
+
+    /**
+     * Full constructor
+     */
+    public ModelCheckpoint(AbstractDeepLearningModel model, String checkpointDir, String modelName,
+                          boolean saveOnlyBest, int keepTopK, String monitorMetric, boolean verbose) {
+        this.model = model;
         this.checkpointDir = checkpointDir;
+        this.modelName = modelName;
         this.saveOnlyBest = saveOnlyBest;
-        this.keepLast = keepLast;
-        this.bestLoss = Double.MAX_VALUE;
-        this.checkpointCount = 0;
+        this.keepTopK = keepTopK;
+        this.monitorMetric = monitorMetric;
+        this.verbose = verbose;
 
-        // Create directory if doesn't exist
-        try {
-            Files.createDirectories(Paths.get(checkpointDir));
-            logger.info("ModelCheckpoint initialized: dir={}, save_only_best={}, keep_last={}",
-                       checkpointDir, saveOnlyBest, keepLast);
-        } catch (IOException e) {
-            logger.error("Failed to create checkpoint directory: {}", checkpointDir, e);
-            throw new RuntimeException("Checkpoint directory creation failed", e);
+        this.bestMetric = Double.NEGATIVE_INFINITY;
+        this.bestEpoch = -1;
+        this.savedCheckpoints = new ArrayList<>();
+
+        // Create checkpoint directory
+        File dir = new File(checkpointDir);
+        if (!dir.exists()) {
+            dir.mkdirs();
         }
     }
 
-    /**
-     * Creates a ModelCheckpoint with default settings.
-     *
-     * @param checkpointDir Directory to save checkpoints
-     */
-    public ModelCheckpoint(String checkpointDir) {
-        this(checkpointDir, false, 3); // Keep last 3 checkpoints by default
+    @Override
+    public void onEpochStart(int epoch) {
+        // Nothing to do at epoch start
     }
 
-    /**
-     * Saves a model checkpoint.
-     *
-     * @param model The VAE model to save
-     * @param config Model configuration
-     * @param epoch Current epoch
-     * @param valLoss Validation loss
-     * @param metrics Training metrics
-     * @return Path to saved checkpoint
-     */
-    public String save(VariationalAutoencoder3D model,
-                      VAEConfig config,
-                      int epoch,
-                      double valLoss,
-                      TrainingMetrics metrics) {
-
-        // Check if should save
-        boolean shouldSave = !saveOnlyBest || (valLoss < bestLoss);
-
-        if (!shouldSave) {
-            logger.debug("Skipping checkpoint save (not best model)");
-            return null;
-        }
-
-        if (valLoss < bestLoss) {
-            bestLoss = valLoss;
-        }
-
-        // Create checkpoint subdirectory
-        String timestamp = LocalDateTime.now()
-            .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String checkpointName = String.format("checkpoint_epoch%03d_%s", epoch, timestamp);
-        String checkpointPath = Paths.get(checkpointDir, checkpointName).toString();
-
+    @Override
+    public void onEpochEnd(int epoch, double trainLoss, double trainAcc,
+                          double valLoss, double valAcc, double valBalAcc) {
         try {
-            Files.createDirectories(Paths.get(checkpointPath));
-
-            // Save model weights
-            String weightsPath = Paths.get(checkpointPath, MODEL_WEIGHTS_FILE).toString();
-            model.save(weightsPath);
-            logger.debug("Saved model weights to: {}", weightsPath);
-
-            // Save configuration
-            String configPath = Paths.get(checkpointPath, CONFIG_FILE).toString();
-            config.saveToFile(configPath);
-            logger.debug("Saved config to: {}", configPath);
-
-            // Save metadata
-            saveMetadata(checkpointPath, epoch, valLoss, model, config);
-
-            // Save metrics
-            if (metrics != null) {
-                String metricsPath = Paths.get(checkpointPath, METRICS_FILE).toString();
-                metrics.saveToCSV(metricsPath);
-                logger.debug("Saved metrics to: {}", metricsPath);
+            // Determine metric value based on monitoring metric
+            double currentMetric;
+            switch (monitorMetric) {
+                case "val_acc":
+                    currentMetric = valAcc;
+                    break;
+                case "val_bal_acc":
+                    currentMetric = valBalAcc;
+                    break;
+                case "val_loss":
+                    currentMetric = -valLoss;  // Negate so higher is better
+                    break;
+                default:
+                    currentMetric = valBalAcc;
             }
 
-            checkpointCount++;
+            // Check if we should save
+            boolean shouldSave = false;
 
-            logger.info("Checkpoint saved: epoch={}, val_loss={:.6f}, path={}",
-                       epoch, valLoss, checkpointPath);
+            if (saveOnlyBest) {
+                if (currentMetric > bestMetric) {
+                    bestMetric = currentMetric;
+                    bestEpoch = epoch;
+                    shouldSave = true;
 
-            // Clean up old checkpoints if needed
-            if (keepLast > 0) {
-                cleanupOldCheckpoints();
+                    if (verbose) {
+                        System.out.printf("Epoch %d: %s improved from %.4f to %.4f\n",
+                                        epoch + 1, monitorMetric, bestMetric, currentMetric);
+                    }
+                }
+            } else {
+                shouldSave = true;
             }
 
-            return checkpointPath;
+            // Save checkpoint
+            if (shouldSave) {
+                String filename = saveOnlyBest ?
+                                String.format("%s_best", modelName) :
+                                String.format("%s_epoch_%03d", modelName, epoch);
 
-        } catch (Exception e) {
-            logger.error("Failed to save checkpoint", e);
-            throw new RuntimeException("Checkpoint save failed", e);
-        }
-    }
+                String modelPath = checkpointDir + File.separator + filename;
 
-    /**
-     * Saves metadata to JSON file.
-     */
-    private void saveMetadata(String checkpointPath, int epoch, double valLoss,
-                             VariationalAutoencoder3D model, VAEConfig config) throws IOException {
+                // Save model
+                model.save(modelPath);
 
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("epoch", epoch);
-        metadata.put("val_loss", valLoss);
-        metadata.put("timestamp", LocalDateTime.now().toString());
-        metadata.put("model_class", model.getClass().getSimpleName());
-        metadata.put("latent_dim", config.getLatentDim());
-        metadata.put("input_size", config.getInputSize());
-        metadata.put("architecture", config.getArchitectureType().toString());
-        metadata.put("checkpoint_count", checkpointCount);
+                // Save training info
+                saveTrainingInfo(modelPath, epoch, trainLoss, trainAcc, valLoss, valAcc, valBalAcc);
 
-        String metadataPath = Paths.get(checkpointPath, METADATA_FILE).toString();
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                // Track checkpoint
+                CheckpointInfo info = new CheckpointInfo(epoch, currentMetric, modelPath);
+                savedCheckpoints.add(info);
 
-        try (FileWriter writer = new FileWriter(metadataPath)) {
-            gson.toJson(metadata, writer);
-        }
+                if (saveOnlyBest) {
+                    bestModelPath = modelPath;
+                }
 
-        logger.debug("Saved metadata to: {}", metadataPath);
-    }
+                if (verbose) {
+                    System.out.printf("Saved checkpoint: %s (metric: %.4f)\n", modelPath, currentMetric);
+                }
 
-    /**
-     * Loads a model from checkpoint.
-     *
-     * @param checkpointPath Path to checkpoint directory
-     * @return Loaded VAE model
-     */
-    public VariationalAutoencoder3D load(String checkpointPath) {
-        try {
-            // Load configuration
-            String configPath = Paths.get(checkpointPath, CONFIG_FILE).toString();
-            VAEConfig config = VAEConfig.loadFromFile(configPath);
-            logger.debug("Loaded config from: {}", configPath);
-
-            // Create model
-            VariationalAutoencoder3D model = new VariationalAutoencoder3D(config);
-
-            // Load weights
-            String weightsPath = Paths.get(checkpointPath, MODEL_WEIGHTS_FILE).toString();
-            model.load(weightsPath);
-            logger.info("Model loaded from checkpoint: {}", checkpointPath);
-
-            return model;
-
-        } catch (Exception e) {
-            logger.error("Failed to load checkpoint from: {}", checkpointPath, e);
-            throw new RuntimeException("Checkpoint load failed", e);
-        }
-    }
-
-    /**
-     * Loads metadata from checkpoint.
-     *
-     * @param checkpointPath Path to checkpoint
-     * @return Metadata map
-     */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> loadMetadata(String checkpointPath) {
-        try {
-            String metadataPath = Paths.get(checkpointPath, METADATA_FILE).toString();
-            Gson gson = new Gson();
-
-            try (FileReader reader = new FileReader(metadataPath)) {
-                return gson.fromJson(reader, Map.class);
-            }
-
-        } catch (IOException e) {
-            logger.error("Failed to load metadata from: {}", checkpointPath, e);
-            return new HashMap<>();
-        }
-    }
-
-    /**
-     * Finds the latest checkpoint in directory.
-     *
-     * @return Path to latest checkpoint, or null if none found
-     */
-    public String findLatestCheckpoint() {
-        try {
-            File dir = new File(checkpointDir);
-            if (!dir.exists() || !dir.isDirectory()) {
-                return null;
-            }
-
-            File[] checkpoints = dir.listFiles(File::isDirectory);
-            if (checkpoints == null || checkpoints.length == 0) {
-                return null;
-            }
-
-            // Find most recent by modification time
-            File latest = null;
-            long latestTime = 0;
-
-            for (File checkpoint : checkpoints) {
-                long modTime = checkpoint.lastModified();
-                if (modTime > latestTime) {
-                    latestTime = modTime;
-                    latest = checkpoint;
+                // Clean up old checkpoints if needed
+                if (keepTopK > 0 && savedCheckpoints.size() > keepTopK) {
+                    cleanupOldCheckpoints();
                 }
             }
 
-            return latest != null ? latest.getAbsolutePath() : null;
-
         } catch (Exception e) {
-            logger.error("Error finding latest checkpoint", e);
-            return null;
+            System.err.println("Error saving checkpoint: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onBatchEnd(int epoch, int batch, int totalBatches, double loss, double acc) {
+        // Nothing to do at batch end
+    }
+
+    @Override
+    public void onTrainingComplete(Metrics.History history) {
+        if (verbose) {
+            System.out.println("\n" + "=".repeat(80));
+            System.out.println("Checkpoint Summary");
+            System.out.println("=".repeat(80));
+            System.out.printf("Best %s: %.4f at epoch %d\n", monitorMetric, bestMetric, bestEpoch + 1);
+            if (bestModelPath != null) {
+                System.out.println("Best model saved at: " + bestModelPath);
+            }
+            System.out.println("Total checkpoints saved: " + savedCheckpoints.size());
+            System.out.println("=".repeat(80));
+        }
+
+        // Save final summary
+        try {
+            saveFinalSummary(history);
+        } catch (IOException e) {
+            System.err.println("Error saving final summary: " + e.getMessage());
         }
     }
 
     /**
-     * Cleans up old checkpoints, keeping only the most recent.
+     * Save training information with checkpoint
+     */
+    private void saveTrainingInfo(String modelPath, int epoch,
+                                  double trainLoss, double trainAcc,
+                                  double valLoss, double valAcc, double valBalAcc) throws IOException {
+        String infoPath = modelPath + ".info";
+
+        Properties props = new Properties();
+        props.setProperty("epoch", String.valueOf(epoch));
+        props.setProperty("train_loss", String.format("%.6f", trainLoss));
+        props.setProperty("train_accuracy", String.format("%.6f", trainAcc));
+        props.setProperty("validation_loss", String.format("%.6f", valLoss));
+        props.setProperty("validation_accuracy", String.format("%.6f", valAcc));
+        props.setProperty("validation_balanced_accuracy", String.format("%.6f", valBalAcc));
+        props.setProperty("timestamp", new Date().toString());
+
+        try (FileOutputStream fos = new FileOutputStream(infoPath)) {
+            props.store(fos, "Training checkpoint information");
+        }
+    }
+
+    /**
+     * Save final training summary
+     */
+    private void saveFinalSummary(Metrics.History history) throws IOException {
+        String summaryPath = checkpointDir + File.separator + modelName + "_summary.txt";
+
+        try (PrintWriter writer = new PrintWriter(new FileWriter(summaryPath))) {
+            writer.println("Training Summary for " + modelName);
+            writer.println("=".repeat(80));
+            writer.println();
+
+            writer.println("Best Results:");
+            writer.printf("  Best %s: %.4f at epoch %d\n", monitorMetric, bestMetric, bestEpoch + 1);
+            writer.printf("  Best validation accuracy: %.4f\n", history.getBestValidationAccuracy());
+            writer.printf("  Best validation balanced accuracy: %.4f\n", history.getBestValidationBalancedAccuracy());
+            writer.println();
+
+            writer.println("Final Results:");
+            List<Double> trainLoss = history.getTrainLoss();
+            List<Double> valLoss = history.getValidationLoss();
+            List<Double> valAcc = history.getValidationAccuracy();
+            List<Double> valBalAcc = history.getValidationBalancedAccuracy();
+
+            if (!trainLoss.isEmpty()) {
+                int lastEpoch = trainLoss.size() - 1;
+                writer.printf("  Final train loss: %.4f\n", trainLoss.get(lastEpoch));
+                writer.printf("  Final validation loss: %.4f\n", valLoss.get(lastEpoch));
+                writer.printf("  Final validation accuracy: %.4f\n", valAcc.get(lastEpoch));
+                writer.printf("  Final validation balanced accuracy: %.4f\n", valBalAcc.get(lastEpoch));
+            }
+            writer.println();
+
+            writer.println("Training History:");
+            writer.println(String.format("%-8s %-12s %-12s %-12s %-12s %-12s",
+                                       "Epoch", "Train Loss", "Train Acc", "Val Loss", "Val Acc", "Val Bal Acc"));
+            writer.println("-".repeat(80));
+
+            for (int i = 0; i < trainLoss.size(); i++) {
+                writer.println(String.format("%-8d %-12.4f %-12.4f %-12.4f %-12.4f %-12.4f",
+                                           i + 1,
+                                           trainLoss.get(i),
+                                           history.getTrainAccuracy().get(i),
+                                           valLoss.get(i),
+                                           valAcc.get(i),
+                                           valBalAcc.get(i)));
+            }
+            writer.println();
+
+            writer.println("Saved Checkpoints:");
+            for (CheckpointInfo info : savedCheckpoints) {
+                writer.printf("  Epoch %d: %s (metric: %.4f)\n", info.epoch + 1, info.path, info.metric);
+            }
+        }
+
+        if (verbose) {
+            System.out.println("Training summary saved to: " + summaryPath);
+        }
+    }
+
+    /**
+     * Clean up old checkpoints, keeping only top-K
      */
     private void cleanupOldCheckpoints() {
-        try {
-            File dir = new File(checkpointDir);
-            File[] checkpoints = dir.listFiles(File::isDirectory);
+        // Sort checkpoints by metric
+        Collections.sort(savedCheckpoints);
 
-            if (checkpoints == null || checkpoints.length <= keepLast) {
-                return; // Nothing to clean up
-            }
+        // Remove checkpoints beyond top-K
+        while (savedCheckpoints.size() > keepTopK) {
+            CheckpointInfo toRemove = savedCheckpoints.remove(savedCheckpoints.size() - 1);
 
-            // Sort by modification time
-            java.util.Arrays.sort(checkpoints,
-                (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+            try {
+                // Delete model files
+                deleteCheckpointFiles(toRemove.path);
 
-            // Delete old checkpoints
-            for (int i = keepLast; i < checkpoints.length; i++) {
-                deleteDirectory(checkpoints[i]);
-                logger.debug("Deleted old checkpoint: {}", checkpoints[i].getName());
-            }
-
-        } catch (Exception e) {
-            logger.warn("Failed to cleanup old checkpoints", e);
-        }
-    }
-
-    /**
-     * Recursively deletes a directory.
-     */
-    private void deleteDirectory(File dir) {
-        File[] files = dir.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) {
-                    deleteDirectory(file);
-                } else {
-                    file.delete();
+                if (verbose) {
+                    System.out.printf("Removed old checkpoint: %s (metric: %.4f)\n",
+                                    toRemove.path, toRemove.metric);
                 }
+            } catch (IOException e) {
+                System.err.println("Failed to delete checkpoint: " + toRemove.path);
             }
         }
-        dir.delete();
     }
 
     /**
-     * Gets checkpoint directory.
-     *
-     * @return Checkpoint directory path
+     * Delete all files associated with a checkpoint
      */
-    public String getCheckpointDir() {
-        return checkpointDir;
+    private void deleteCheckpointFiles(String basePath) throws IOException {
+        // Delete .pt file (weights)
+        Files.deleteIfExists(Paths.get(basePath + ".pt"));
+
+        // Delete .meta file (metadata)
+        Files.deleteIfExists(Paths.get(basePath + ".meta"));
+
+        // Delete .info file (training info)
+        Files.deleteIfExists(Paths.get(basePath + ".info"));
     }
 
     /**
-     * Gets best validation loss seen.
-     *
-     * @return Best validation loss
+     * Get best model path
      */
-    public double getBestLoss() {
-        return bestLoss;
+    public String getBestModelPath() {
+        return bestModelPath;
     }
 
     /**
-     * Gets total number of checkpoints saved.
-     *
-     * @return Checkpoint count
+     * Get best metric value
      */
-    public int getCheckpointCount() {
-        return checkpointCount;
+    public double getBestMetric() {
+        return bestMetric;
+    }
+
+    /**
+     * Get best epoch
+     */
+    public int getBestEpoch() {
+        return bestEpoch;
+    }
+
+    /**
+     * Get list of saved checkpoints
+     */
+    public List<CheckpointInfo> getSavedCheckpoints() {
+        return new ArrayList<>(savedCheckpoints);
+    }
+
+    /**
+     * Load best model
+     */
+    public void loadBestModel() throws IOException {
+        if (bestModelPath == null) {
+            throw new IllegalStateException("No best model available");
+        }
+        model.load(bestModelPath);
+        if (verbose) {
+            System.out.println("Loaded best model from: " + bestModelPath);
+        }
     }
 }

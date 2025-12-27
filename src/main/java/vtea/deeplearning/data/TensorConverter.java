@@ -1,403 +1,390 @@
+/*
+ * Copyright (C) 2025 University of Nebraska
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
 package vtea.deeplearning.data;
 
 import ij.ImageStack;
 import ij.process.ImageProcessor;
-import org.bytedeco.javacpp.FloatPointer;
-import org.bytedeco.javacpp.LongPointer;
-import org.bytedeco.pytorch.Tensor;
-import org.bytedeco.pytorch.TensorOptions;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import org.bytedeco.pytorch.*;
 import static org.bytedeco.pytorch.global.torch.*;
+import java.nio.FloatBuffer;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
- * Utility class for converting between ImageJ ImageStack and PyTorch Tensor.
+ * Utility class for converting between ImageJ ImageStack and PyTorch Tensor formats.
+ * Handles multi-channel 3D images and various normalization strategies.
  *
- * <p>This class handles the conversion of 3D volumetric image data between
- * ImageJ's ImageStack format and PyTorch's Tensor format, which is required
- * for deep learning operations.</p>
- *
- * <p>Supports:</p>
- * <ul>
- *   <li>Single and multi-channel conversion</li>
- *   <li>Multiple normalization strategies (Z-score, Min-Max, None)</li>
- *   <li>Batch tensor creation</li>
- *   <li>Bidirectional conversion (ImageStack ↔ Tensor)</li>
- * </ul>
- *
- * @author VTEA Development Team
- * @version 1.0
+ * @author VTEA Deep Learning Team
  */
 public class TensorConverter {
 
-    private static final Logger logger = LoggerFactory.getLogger(TensorConverter.class);
-
-    private final NormalizationType normalization;
-    private final boolean useGPU;
-
     /**
-     * Normalization strategies for tensor data.
+     * Normalization types for tensor conversion
      */
     public enum NormalizationType {
-        /** Z-score normalization: (x - mean) / std */
-        ZSCORE,
-
-        /** Min-max normalization to [0, 1] range */
-        MINMAX,
-
-        /** No normalization */
-        NONE
+        NONE,       // No normalization
+        MINMAX,     // Min-max normalization to [0, 1]
+        ZSCORE,     // Z-score normalization (mean=0, std=1)
+        PERCENTILE  // Percentile-based normalization (robust to outliers)
     }
 
     /**
-     * Creates a TensorConverter with specified normalization and device settings.
+     * Convert a single-channel ImageStack to PyTorch Tensor.
+     * Output shape: [1, depth, height, width] (batch size 1, single channel)
      *
-     * @param normalization The normalization strategy to use
-     * @param useGPU Whether to create tensors on GPU (requires CUDA)
+     * @param stack       ImageStack to convert
+     * @param normType    Type of normalization to apply
+     * @return PyTorch Tensor
      */
-    public TensorConverter(NormalizationType normalization, boolean useGPU) {
-        this.normalization = normalization;
-        this.useGPU = useGPU && cuda_is_available();
-
-        if (useGPU && !cuda_is_available()) {
-            logger.warn("GPU requested but CUDA not available. Falling back to CPU.");
+    public static Tensor imageStackToTensor(ImageStack stack, NormalizationType normType) {
+        if (stack == null) {
+            throw new IllegalArgumentException("ImageStack cannot be null");
         }
 
-        logger.info("TensorConverter initialized: normalization={}, device={}",
-                   normalization, this.useGPU ? "CUDA" : "CPU");
-    }
-
-    /**
-     * Creates a TensorConverter with default settings (ZSCORE normalization, CPU).
-     */
-    public TensorConverter() {
-        this(NormalizationType.ZSCORE, false);
-    }
-
-    /**
-     * Converts a single-channel ImageStack to a PyTorch Tensor.
-     *
-     * @param stack The ImageStack to convert (depth × height × width)
-     * @return Tensor with shape [1, 1, depth, height, width] (batch size 1, 1 channel)
-     */
-    public Tensor imageStackToTensor(ImageStack stack) {
-        if (stack == null || stack.getSize() == 0) {
-            throw new IllegalArgumentException("ImageStack is null or empty");
-        }
-
-        int depth = stack.getSize();
-        int height = stack.getHeight();
         int width = stack.getWidth();
+        int height = stack.getHeight();
+        int depth = stack.getSize();
 
-        logger.debug("Converting ImageStack to Tensor: {}×{}×{}", depth, height, width);
+        // Create float array to hold pixel data
+        float[] data = new float[depth * height * width];
 
-        // Extract data from ImageStack
-        float[] data = extractDataFromStack(stack);
-
-        // Normalize
-        data = normalize(data);
-
-        // Create tensor
-        long[] shape = new long[]{1, 1, depth, height, width}; // [B, C, D, H, W]
-        Tensor tensor = createTensorFromArray(data, shape);
-
-        return tensor;
-    }
-
-    /**
-     * Converts multi-channel ImageStacks to a PyTorch Tensor.
-     *
-     * @param stacks Array of ImageStacks, one per channel
-     * @return Tensor with shape [1, C, depth, height, width]
-     */
-    public Tensor imageStacksToTensor(ImageStack[] stacks) {
-        if (stacks == null || stacks.length == 0) {
-            throw new IllegalArgumentException("ImageStack array is null or empty");
-        }
-
-        int numChannels = stacks.length;
-        int depth = stacks[0].getSize();
-        int height = stacks[0].getHeight();
-        int width = stacks[0].getWidth();
-
-        // Validate all stacks have same dimensions
-        for (int i = 1; i < numChannels; i++) {
-            if (stacks[i].getSize() != depth ||
-                stacks[i].getHeight() != height ||
-                stacks[i].getWidth() != width) {
-                throw new IllegalArgumentException(
-                    String.format("Channel %d has inconsistent dimensions", i));
+        // Extract pixels from stack
+        int index = 0;
+        for (int z = 0; z < depth; z++) {
+            ImageProcessor ip = stack.getProcessor(z + 1); // ImageJ uses 1-based indexing
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    data[index++] = ip.getPixelValue(x, y);
+                }
             }
         }
 
-        logger.debug("Converting {} channel ImageStacks to Tensor: {}×{}×{}",
-                    numChannels, depth, height, width);
+        // Apply normalization
+        data = normalize(data, normType);
 
-        // Extract and concatenate all channels
-        int volumeSize = depth * height * width;
-        float[] data = new float[numChannels * volumeSize];
-
-        for (int c = 0; c < numChannels; c++) {
-            float[] channelData = extractDataFromStack(stacks[c]);
-            channelData = normalize(channelData);
-            System.arraycopy(channelData, 0, data, c * volumeSize, volumeSize);
-        }
-
-        // Create tensor
-        long[] shape = new long[]{1, numChannels, depth, height, width};
-        Tensor tensor = createTensorFromArray(data, shape);
+        // Create tensor from data
+        // Shape: [1, 1, depth, height, width] (batch=1, channels=1)
+        FloatBuffer buffer = FloatBuffer.wrap(data);
+        LongVector shape = new LongVector(1, 1, depth, height, width);
+        Tensor tensor = from_blob(buffer, shape);
 
         return tensor;
     }
 
     /**
-     * Converts a PyTorch Tensor back to ImageStack.
+     * Convert multi-channel ImageStack array to PyTorch Tensor.
+     * Output shape: [1, channels, depth, height, width]
      *
-     * @param tensor Tensor with shape [1, 1, D, H, W] or [1, C, D, H, W]
-     * @return ImageStack (if single channel) or array of ImageStacks (if multi-channel)
+     * @param stacks       Array of ImageStacks (one per channel)
+     * @param channelIndices Which channels to include (null = all)
+     * @param normType     Type of normalization to apply
+     * @return PyTorch Tensor
      */
-    public ImageStack tensorToImageStack(Tensor tensor) {
+    public static Tensor multiChannelToTensor(ImageStack[] stacks, int[] channelIndices,
+                                               NormalizationType normType) {
+        if (stacks == null || stacks.length == 0) {
+            throw new IllegalArgumentException("ImageStack array cannot be null or empty");
+        }
+
+        // Determine which channels to use
+        int[] channels = channelIndices;
+        if (channels == null) {
+            channels = new int[stacks.length];
+            for (int i = 0; i < channels.length; i++) {
+                channels[i] = i;
+            }
+        }
+
+        int numChannels = channels.length;
+        int width = stacks[0].getWidth();
+        int height = stacks[0].getHeight();
+        int depth = stacks[0].getSize();
+
+        // Validate all stacks have same dimensions
+        for (int ch : channels) {
+            if (stacks[ch].getWidth() != width ||
+                stacks[ch].getHeight() != height ||
+                stacks[ch].getSize() != depth) {
+                throw new IllegalArgumentException("All ImageStacks must have the same dimensions");
+            }
+        }
+
+        // Create float array for all channels
+        float[] data = new float[numChannels * depth * height * width];
+
+        // Extract pixels from all channels
+        for (int c = 0; c < numChannels; c++) {
+            ImageStack stack = stacks[channels[c]];
+            int channelOffset = c * depth * height * width;
+
+            for (int z = 0; z < depth; z++) {
+                ImageProcessor ip = stack.getProcessor(z + 1);
+                int sliceOffset = z * height * width;
+
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        int index = channelOffset + sliceOffset + y * width + x;
+                        data[index] = ip.getPixelValue(x, y);
+                    }
+                }
+            }
+        }
+
+        // Apply normalization
+        data = normalize(data, normType);
+
+        // Create tensor
+        // Shape: [1, numChannels, depth, height, width]
+        FloatBuffer buffer = FloatBuffer.wrap(data);
+        LongVector shape = new LongVector(1, numChannels, depth, height, width);
+        Tensor tensor = from_blob(buffer, shape);
+
+        return tensor;
+    }
+
+    /**
+     * Convert a list of multi-channel regions to a batched tensor.
+     * Output shape: [batchSize, channels, depth, height, width]
+     *
+     * @param regions      List of ImageStack arrays (each array is one region with multiple channels)
+     * @param channelIndices Which channels to include
+     * @param normType     Type of normalization
+     * @return PyTorch Tensor
+     */
+    public static Tensor batchRegionsToTensor(List<ImageStack[]> regions, int[] channelIndices,
+                                               NormalizationType normType) {
+        if (regions == null || regions.isEmpty()) {
+            throw new IllegalArgumentException("Regions list cannot be null or empty");
+        }
+
+        int batchSize = regions.size();
+        List<Tensor> tensors = new ArrayList<>();
+
+        // Convert each region to tensor
+        for (ImageStack[] region : regions) {
+            Tensor t = multiChannelToTensor(region, channelIndices, normType);
+            tensors.add(t.squeeze(0)); // Remove batch dimension for concatenation
+        }
+
+        // Stack tensors along batch dimension
+        TensorVector tensorVec = new TensorVector(tensors.size());
+        for (int i = 0; i < tensors.size(); i++) {
+            tensorVec.put(i, tensors.get(i));
+        }
+
+        Tensor batchTensor = stack(tensorVec, 0); // Stack along dimension 0
+
+        return batchTensor;
+    }
+
+    /**
+     * Convert PyTorch Tensor back to ImageStack.
+     * Input tensor should have shape [depth, height, width] or [1, depth, height, width]
+     *
+     * @param tensor PyTorch Tensor to convert
+     * @return ImageStack
+     */
+    public static ImageStack tensorToImageStack(Tensor tensor) {
         if (tensor == null) {
-            throw new IllegalArgumentException("Tensor is null");
+            throw new IllegalArgumentException("Tensor cannot be null");
         }
 
-        // Validate tensor dimensions
-        long[] shape = tensor.sizes();
-        if (shape.length != 5) {
-            throw new IllegalArgumentException(
-                "Tensor must be 5D [B, C, D, H, W], got shape: " +
-                java.util.Arrays.toString(shape));
+        // Get tensor dimensions
+        LongVector sizes = tensor.sizes();
+        int ndim = (int) sizes.size();
+
+        int depth, height, width;
+        if (ndim == 3) {
+            depth = (int) sizes.get(0);
+            height = (int) sizes.get(1);
+            width = (int) sizes.get(2);
+        } else if (ndim == 4) {
+            // Assume shape [1, depth, height, width]
+            depth = (int) sizes.get(1);
+            height = (int) sizes.get(2);
+            width = (int) sizes.get(3);
+        } else {
+            throw new IllegalArgumentException("Tensor must have 3 or 4 dimensions");
         }
-
-        int batch = (int) shape[0];
-        int channels = (int) shape[1];
-        int depth = (int) shape[2];
-        int height = (int) shape[3];
-        int width = (int) shape[4];
-
-        if (batch != 1) {
-            throw new IllegalArgumentException("Batch size must be 1, got: " + batch);
-        }
-
-        if (channels != 1) {
-            throw new UnsupportedOperationException(
-                "Multi-channel tensor to ImageStack conversion not yet implemented. " +
-                "Use tensorToImageStacks() instead.");
-        }
-
-        logger.debug("Converting Tensor to ImageStack: {}×{}×{}", depth, height, width);
-
-        // Move to CPU if on GPU
-        Tensor cpuTensor = tensor.cpu();
-
-        // Extract data
-        float[] data = tensorToFloatArray(cpuTensor);
 
         // Create ImageStack
-        ImageStack stack = new ImageStack(width, height);
-        int sliceSize = height * width;
+        ImageStack stack = new ImageStack(width, height, depth);
 
+        // Extract data from tensor
+        FloatPointer dataPtr = tensor.data_ptr_float();
+        float[] data = new float[depth * height * width];
+        dataPtr.get(data);
+
+        // Populate ImageStack
         for (int z = 0; z < depth; z++) {
-            float[] sliceData = new float[sliceSize];
-            System.arraycopy(data, z * sliceSize, sliceData, 0, sliceSize);
+            float[] sliceData = new float[height * width];
+            System.arraycopy(data, z * height * width, sliceData, 0, height * width);
 
             ij.process.FloatProcessor fp = new ij.process.FloatProcessor(width, height, sliceData);
-            stack.addSlice("z=" + (z + 1), fp);
+            stack.setProcessor(fp, z + 1);
         }
 
         return stack;
     }
 
     /**
-     * Creates a batch tensor from multiple ImageStacks.
+     * Normalize data array based on normalization type
      *
-     * @param stacks Array of ImageStacks
-     * @return Tensor with shape [N, 1, D, H, W] where N is batch size
+     * @param data     Data to normalize
+     * @param normType Type of normalization
+     * @return Normalized data
      */
-    public Tensor createBatch(ImageStack[] stacks) {
-        if (stacks == null || stacks.length == 0) {
-            throw new IllegalArgumentException("Stacks array is null or empty");
-        }
-
-        int batchSize = stacks.length;
-
-        // Convert each stack individually
-        Tensor[] tensors = new Tensor[batchSize];
-        for (int i = 0; i < batchSize; i++) {
-            tensors[i] = imageStackToTensor(stacks[i]);
-        }
-
-        // Concatenate along batch dimension
-        return cat(tensors, 0);
-    }
-
-    // ==================== Private Helper Methods ====================
-
-    /**
-     * Extracts pixel data from ImageStack as float array.
-     */
-    private float[] extractDataFromStack(ImageStack stack) {
-        int depth = stack.getSize();
-        int height = stack.getHeight();
-        int width = stack.getWidth();
-        int volumeSize = depth * height * width;
-
-        float[] data = new float[volumeSize];
-        int index = 0;
-
-        for (int z = 1; z <= depth; z++) { // ImageStack is 1-indexed
-            ImageProcessor ip = stack.getProcessor(z);
-
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    data[index++] = ip.getf(x, y);
-                }
-            }
-        }
-
-        return data;
-    }
-
-    /**
-     * Normalizes data according to the normalization strategy.
-     */
-    private float[] normalize(float[] data) {
-        switch (normalization) {
-            case ZSCORE:
-                return normalizeZScore(data);
-            case MINMAX:
-                return normalizeMinMax(data);
-            case NONE:
-                return data;
-            default:
-                throw new IllegalStateException("Unknown normalization: " + normalization);
-        }
-    }
-
-    /**
-     * Z-score normalization: (x - mean) / std
-     */
-    private float[] normalizeZScore(float[] data) {
-        // Compute mean
-        double sum = 0.0;
-        for (float value : data) {
-            sum += value;
-        }
-        double mean = sum / data.length;
-
-        // Compute standard deviation
-        double sumSquaredDiff = 0.0;
-        for (float value : data) {
-            double diff = value - mean;
-            sumSquaredDiff += diff * diff;
-        }
-        double std = Math.sqrt(sumSquaredDiff / data.length);
-
-        // Avoid division by zero
-        if (std < 1e-8) {
-            logger.warn("Standard deviation near zero ({}), skipping normalization", std);
+    private static float[] normalize(float[] data, NormalizationType normType) {
+        if (normType == NormalizationType.NONE) {
             return data;
         }
 
-        // Normalize
         float[] normalized = new float[data.length];
-        for (int i = 0; i < data.length; i++) {
-            normalized[i] = (float) ((data[i] - mean) / std);
+
+        switch (normType) {
+            case MINMAX:
+                normalized = normalizeMinMax(data);
+                break;
+            case ZSCORE:
+                normalized = normalizeZScore(data);
+                break;
+            case PERCENTILE:
+                normalized = normalizePercentile(data, 1.0f, 99.0f);
+                break;
+            default:
+                System.arraycopy(data, 0, normalized, 0, data.length);
         }
 
-        logger.debug("Z-score normalization: mean={}, std={}", mean, std);
         return normalized;
     }
 
     /**
      * Min-max normalization to [0, 1] range
      */
-    private float[] normalizeMinMax(float[] data) {
-        // Find min and max
+    private static float[] normalizeMinMax(float[] data) {
         float min = Float.MAX_VALUE;
         float max = Float.MIN_VALUE;
 
+        // Find min and max
         for (float value : data) {
             if (value < min) min = value;
             if (value > max) max = value;
         }
 
-        float range = max - min;
-
-        // Avoid division by zero
-        if (range < 1e-8) {
-            logger.warn("Range near zero ({}), skipping normalization", range);
-            return data;
-        }
-
         // Normalize
         float[] normalized = new float[data.length];
-        for (int i = 0; i < data.length; i++) {
-            normalized[i] = (data[i] - min) / range;
+        float range = max - min;
+        if (range > 0) {
+            for (int i = 0; i < data.length; i++) {
+                normalized[i] = (data[i] - min) / range;
+            }
+        } else {
+            // All values are the same
+            for (int i = 0; i < data.length; i++) {
+                normalized[i] = 0.5f;
+            }
         }
 
-        logger.debug("Min-max normalization: min={}, max={}", min, max);
         return normalized;
     }
 
     /**
-     * Creates a PyTorch tensor from float array with given shape.
+     * Z-score normalization (mean=0, std=1)
      */
-    private Tensor createTensorFromArray(float[] data, long[] shape) {
-        // Create tensor options
-        TensorOptions options = new TensorOptions();
-        options.dtype(kFloat32);
+    private static float[] normalizeZScore(float[] data) {
+        // Calculate mean
+        double sum = 0;
+        for (float value : data) {
+            sum += value;
+        }
+        double mean = sum / data.length;
 
-        if (useGPU) {
-            options.device(kCUDA);
+        // Calculate standard deviation
+        double variance = 0;
+        for (float value : data) {
+            variance += (value - mean) * (value - mean);
+        }
+        double std = Math.sqrt(variance / data.length);
+
+        // Normalize
+        float[] normalized = new float[data.length];
+        if (std > 0) {
+            for (int i = 0; i < data.length; i++) {
+                normalized[i] = (float) ((data[i] - mean) / std);
+            }
+        } else {
+            // All values are the same
+            for (int i = 0; i < data.length; i++) {
+                normalized[i] = 0.0f;
+            }
         }
 
-        // Create float pointer
-        FloatPointer pointer = new FloatPointer(data);
-
-        // Create shape pointer
-        LongPointer shapePointer = new LongPointer(shape);
-
-        // Create tensor
-        Tensor tensor = from_blob(pointer, shapePointer, options);
-
-        // Clone to ensure data ownership
-        tensor = tensor.clone();
-
-        return tensor;
+        return normalized;
     }
 
     /**
-     * Converts tensor to float array.
+     * Percentile-based normalization (robust to outliers)
      */
-    private float[] tensorToFloatArray(Tensor tensor) {
-        long numElements = 1;
-        long[] shape = tensor.sizes();
-        for (long dim : shape) {
-            numElements *= dim;
+    private static float[] normalizePercentile(float[] data, float lowPerc, float highPerc) {
+        // Sort data for percentile calculation
+        float[] sorted = data.clone();
+        java.util.Arrays.sort(sorted);
+
+        int lowIdx = (int) (sorted.length * lowPerc / 100.0);
+        int highIdx = (int) (sorted.length * highPerc / 100.0);
+
+        float lowVal = sorted[lowIdx];
+        float highVal = sorted[highIdx];
+
+        // Normalize
+        float[] normalized = new float[data.length];
+        float range = highVal - lowVal;
+        if (range > 0) {
+            for (int i = 0; i < data.length; i++) {
+                float val = (data[i] - lowVal) / range;
+                // Clip to [0, 1]
+                normalized[i] = Math.max(0.0f, Math.min(1.0f, val));
+            }
+        } else {
+            for (int i = 0; i < data.length; i++) {
+                normalized[i] = 0.5f;
+            }
         }
 
-        FloatPointer pointer = new FloatPointer(numElements);
-        tensor.data_ptr_float(pointer);
-
-        float[] data = new float[(int) numElements];
-        pointer.get(data);
-
-        return data;
+        return normalized;
     }
 
     /**
-     * Checks if CUDA is available for GPU acceleration.
-     *
-     * @return true if CUDA is available
+     * Normalize a single tensor in-place using Z-score normalization
      */
-    public static boolean isCudaAvailable() {
-        try {
-            return cuda_is_available();
-        } catch (Exception e) {
-            logger.warn("Error checking CUDA availability", e);
-            return false;
-        }
+    public static Tensor normalizeZScore(Tensor tensor) {
+        Tensor mean = tensor.mean();
+        Tensor std = tensor.std();
+        return tensor.sub(mean).div(std.add(1e-8)); // Add small epsilon to avoid division by zero
+    }
+
+    /**
+     * Normalize a single tensor in-place using min-max normalization
+     */
+    public static Tensor normalizeMinMax(Tensor tensor) {
+        Tensor min = tensor.min();
+        Tensor max = tensor.max();
+        Tensor range = max.sub(min);
+        return tensor.sub(min).div(range.add(1e-8));
     }
 }
