@@ -27,9 +27,17 @@ import java.util.List;
  * Utility class for extracting 3D cubic regions around segmented cells (MicroObjects).
  * Handles boundary cases with various padding strategies.
  *
+ * Supports two APIs:
+ * 1. Static methods for multi-channel extraction (classification workflows)
+ * 2. Instance methods for single-channel extraction (VAE workflows)
+ *
  * @author VTEA Deep Learning Team
  */
 public class CellRegionExtractor {
+
+    // Instance fields for VAE-style API
+    private final int regionSize;
+    private final PaddingType paddingType;
 
     /**
      * Padding strategies for handling boundary cases
@@ -324,5 +332,55 @@ public class CellRegionExtractor {
         }
 
         return new int[]{size, size, size};
+    }
+
+    // ===== INSTANCE-BASED API (for VAE workflows) =====
+
+    /**
+     * Creates a CellRegionExtractor with fixed region size and padding type.
+     * This constructor enables the instance-based API used by VAE workflows.
+     *
+     * @param regionSize The size of the cubic region (e.g., 64 for 64³)
+     * @param paddingType The padding strategy for boundary regions
+     */
+    public CellRegionExtractor(int regionSize, PaddingType paddingType) {
+        this.regionSize = regionSize;
+        this.paddingType = paddingType;
+    }
+
+    /**
+     * Extract a 3D cubic region around a MicroObject from a single-channel ImageStack.
+     * Convenience method for VAE workflows that operate on single-channel data.
+     *
+     * @param cell MicroObject to extract region around
+     * @param imageStack Single-channel ImageStack
+     * @return Extracted region as ImageStack
+     */
+    public ImageStack extractRegion(MicroObject cell, ImageStack imageStack) {
+        ImageStack[] result = extractRegion(
+            cell,
+            new ImageStack[]{imageStack},
+            new int[]{regionSize, regionSize, regionSize},
+            null,
+            paddingType
+        );
+        return result[0];
+    }
+
+    /**
+     * Extract 3D cubic regions from multi-channel ImageStacks using instance configuration.
+     *
+     * @param cell MicroObject to extract region around
+     * @param imageStacks Array of ImageStacks (one per channel)
+     * @return Array of extracted regions (one per channel)
+     */
+    public ImageStack[] extractRegion(MicroObject cell, ImageStack[] imageStacks) {
+        return extractRegion(
+            cell,
+            imageStacks,
+            new int[]{regionSize, regionSize, regionSize},
+            null,
+            paddingType
+        );
     }
 }

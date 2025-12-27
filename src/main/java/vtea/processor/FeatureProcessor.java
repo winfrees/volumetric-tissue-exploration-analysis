@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.ListIterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.slf4j.LoggerFactory;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -43,6 +44,8 @@ import vtea.featureprocessing.AbstractFeatureProcessing;
  */
 @Plugin(type = Processor.class)
 public class FeatureProcessor extends AbstractProcessor {
+
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(FeatureProcessor.class);
 
     /**
      * the size of one feature in comparison to total progress
@@ -158,8 +161,7 @@ public class FeatureProcessor extends AbstractProcessor {
             setProgress(100);
             firePropertyChange("comment", "", "Done.");
         } catch (Exception e) {
-            //System.out.println(e + " in doInBackground");
-            e.printStackTrace();
+            logger.error("Error in feature processing background task", e);
         }
         return null;
     }

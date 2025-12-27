@@ -29,6 +29,8 @@ import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import org.scijava.plugin.Plugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import vtea.featureprocessing.AbstractFeatureProcessing;
 import vtea.featureprocessing.FeatureProcessing;
 
@@ -39,6 +41,8 @@ import vtea.featureprocessing.FeatureProcessing;
  */
 @Plugin(type = FeatureProcessing.class)
 public class KMeans extends AbstractFeatureProcessing {
+
+    private static final Logger logger = LoggerFactory.getLogger(KMeans.class);
 
     public static boolean validate = true;
 
@@ -144,7 +148,7 @@ public class KMeans extends AbstractFeatureProcessing {
                 p.waitFor();
                 String e = null;
                 while ((e = stdError.readLine()) != null) {
-                    System.out.println(e);
+                    logger.error("Python script error: {}", e);
                 }
                 long end = System.nanoTime();
                 IJ.log("VALIDATING: Completed in " + (end - start) / 1000000000 + " seconds");
@@ -157,7 +161,7 @@ public class KMeans extends AbstractFeatureProcessing {
 
                 deleteFiles(new String[]{"random_initial_row_for_kmeans.csv", "matrix_for_python.csv"});
             } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
+                logger.error("Error in KMeans clustering with validation", e);
                 best = new Centroids();
             }
 
@@ -187,13 +191,13 @@ public class KMeans extends AbstractFeatureProcessing {
 
             p.waitFor();
             while ((e = stdError.readLine()) != null) {
-                System.out.println(e);
+                logger.error("Python validation script error: {}", e);
             }
             while ((e = print.readLine()) != null) {
-                System.out.println(e);
+                logger.info("Python validation output: {}", e);
             }
         } catch (IOException | InterruptedException ie) {
-            ie.printStackTrace();
+            logger.error("Error in validation script execution", ie);
         }
 
     }

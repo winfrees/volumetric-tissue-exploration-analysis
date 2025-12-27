@@ -31,6 +31,8 @@ import static java.util.concurrent.ForkJoinTask.invokeAll;
 import java.util.concurrent.RecursiveAction;
 import javax.swing.JComponent;
 import org.scijava.plugin.Plugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import static vtea._vtea.MORPHOLOGICALMAP;
 import static vtea._vtea.SEGMENTATIONMAP;
 import static vtea._vtea.getInterleavedStacks;
@@ -46,6 +48,8 @@ import vteaobjects.MicroObject;
  */
 @Plugin(type = Processor.class)
 public class SegmentationProcessor extends AbstractProcessor {
+
+    private static final Logger logger = LoggerFactory.getLogger(SegmentationProcessor.class);
 
     ImagePlus impOriginal;
     ImagePlus impPreview;
@@ -116,13 +120,13 @@ public class SegmentationProcessor extends AbstractProcessor {
                     con = c.getConstructor();
                     iImp = con.newInstance();
 
-                    //System.out.println("PROFILING: Instance of " + SEGMENTATIONMAP.get(protocol.get(1)) + ", created.");
+                    //logger.debug("PROFILING: Instance of {}, created.", SEGMENTATIONMAP.get(protocol.get(1)));
                 } catch (NullPointerException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-                    System.out.println("EXCEPTION: new instance decleration error... ");
+                    logger.error("EXCEPTION: new instance declaration error", ex);
                 }
 
             } catch (NullPointerException | ClassNotFoundException ex) {
-                System.out.println("EXCEPTION: new class decleration error... ");
+                logger.error("EXCEPTION: new class declaration error", ex);
             }
 
             ((AbstractSegmentation) iImp).addListener(this);
@@ -135,13 +139,9 @@ public class SegmentationProcessor extends AbstractProcessor {
                 }
 
                 volumes = ((AbstractSegmentation) iImp).getObjects();
-                
+
             } catch (Exception ex) {
-                System.out.println("EXCEPTION: Error in object segmentation... " + ex.getLocalizedMessage());
-                StackTraceElement[] ele = ex.getStackTrace();
-                for (int i = 0; i < ex.getStackTrace().length; i++) {
-                    System.out.println("trace: " + ele[i].toString());
-                }
+                logger.error("EXCEPTION: Error in object segmentation: {}", ex.getLocalizedMessage(), ex);
             }
 
             
@@ -152,8 +152,8 @@ public class SegmentationProcessor extends AbstractProcessor {
 
             long end_time = System.currentTimeMillis();
 
-            System.out.println("PROFILING: Segmentation time: " + (end_time - start_time) + " ms.");
-           
+            logger.info("PROFILING: Segmentation time: {} ms.", (end_time - start_time));
+
             firePropertyChange("progress", 0, 100);
             firePropertyChange("segmentationDone", key, "Segmentation done...  ");
     }
@@ -343,12 +343,8 @@ public class SegmentationProcessor extends AbstractProcessor {
                     }
 
                 } catch (Exception ex) {
-                System.out.println("EXCEPTION: Error in object segmentation... " + ex.getLocalizedMessage());
-                StackTraceElement[] ele = ex.getStackTrace();
-                for (int i = 0; i < ex.getStackTrace().length; i++) {
-                    System.out.println("trace: " + ele[i].toString());
+                    logger.error("EXCEPTION: Error in morphological processing: {}", ex.getLocalizedMessage(), ex);
                 }
-            }
 
             }
 

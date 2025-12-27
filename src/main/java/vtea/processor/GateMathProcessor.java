@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.ListIterator;
 import org.scijava.plugin.Plugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import static vtea._vtea.GATEMATHMAP;
 import vtea.exploration.listeners.AddFeaturesListener;
 import vtea.exploration.listeners.GateMathObjectListener;
@@ -41,6 +43,8 @@ import vteaobjects.MicroObject;
  */
 @Plugin(type = Processor.class)
 public class GateMathProcessor extends AbstractProcessor {
+
+    private static final Logger logger = LoggerFactory.getLogger(GateMathProcessor.class);
 
     private String keySQLSafe;
 
@@ -113,10 +117,9 @@ public class GateMathProcessor extends AbstractProcessor {
             currentGate1 = this.gatesString.get(0);
             currentGate2 = this.gatesString.get(1);
             currentOperator = this.operatorsString.get(0);
-            
-            System.out.println("PROFILING: GateMath for 'Assigned' -> " 
-                    + classAssigned + ", " + currentGate1
-                    + " " + currentOperator + " " + currentGate2);
+
+            logger.info("PROFILING: GateMath for 'Assigned' -> {}, {} {} {}",
+                    classAssigned, currentGate1, currentOperator, currentGate2);
 
             Class<?> c;
             c = Class.forName(GATEMATHMAP.get(operatorsString.get(0)));
@@ -172,11 +175,11 @@ public class GateMathProcessor extends AbstractProcessor {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error in gate math processing", e);
         }
         gatedObjects = gatedResults.get(0);
 
-        //System.out.println("PROFILING: gated: " + gatedObjects.size() + " added to class " + classAssigned);
+        //logger.debug("PROFILING: gated: {} added to class {}", gatedObjects.size(), classAssigned);
         ListIterator<MicroObject> itr = gatedObjects.listIterator();
 
         if (hasColumn()) {
