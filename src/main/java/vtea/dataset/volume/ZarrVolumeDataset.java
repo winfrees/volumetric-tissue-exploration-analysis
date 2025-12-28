@@ -236,14 +236,17 @@ public class ZarrVolumeDataset implements ChunkedVolumeDataset {
 
             // Access voxel through ImgLib2
             if (bitDepth == 8) {
-                return ((RandomAccessibleInterval<UnsignedByteType>) rai)
-                    .randomAccess().setPositionAndGet(x, y, z).getRealDouble();
+                var ra = ((RandomAccessibleInterval<UnsignedByteType>) rai).randomAccess();
+                ra.setPosition(new long[]{x, y, z});
+                return ra.get().getRealDouble();
             } else if (bitDepth == 16) {
-                return ((RandomAccessibleInterval<UnsignedShortType>) rai)
-                    .randomAccess().setPositionAndGet(x, y, z).getRealDouble();
+                var ra = ((RandomAccessibleInterval<UnsignedShortType>) rai).randomAccess();
+                ra.setPosition(new long[]{x, y, z});
+                return ra.get().getRealDouble();
             } else {
-                return ((RandomAccessibleInterval<FloatType>) rai)
-                    .randomAccess().setPositionAndGet(x, y, z).getRealDouble();
+                var ra = ((RandomAccessibleInterval<FloatType>) rai).randomAccess();
+                ra.setPosition(new long[]{x, y, z});
+                return ra.get().getRealDouble();
             }
         } catch (Exception e) {
             System.err.println("Error reading voxel: " + e.getMessage());

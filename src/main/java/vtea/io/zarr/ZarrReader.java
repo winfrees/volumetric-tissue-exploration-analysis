@@ -258,18 +258,24 @@ public class ZarrReader implements AutoCloseable {
 
         switch (info.dataType) {
             case UINT8:
-            case INT8:
-                return ((RandomAccessibleInterval<UnsignedByteType>) rai)
-                        .randomAccess().setPositionAndGet(x, y, z).getRealDouble();
+            case INT8: {
+                var ra = ((RandomAccessibleInterval<UnsignedByteType>) rai).randomAccess();
+                ra.setPosition(new long[]{x, y, z});
+                return ra.get().getRealDouble();
+            }
             case UINT16:
-            case INT16:
-                return ((RandomAccessibleInterval<UnsignedShortType>) rai)
-                        .randomAccess().setPositionAndGet(x, y, z).getRealDouble();
+            case INT16: {
+                var ra = ((RandomAccessibleInterval<UnsignedShortType>) rai).randomAccess();
+                ra.setPosition(new long[]{x, y, z});
+                return ra.get().getRealDouble();
+            }
             case UINT32:
             case INT32:
-            case FLOAT32:
-                return ((RandomAccessibleInterval<FloatType>) rai)
-                        .randomAccess().setPositionAndGet(x, y, z).getRealDouble();
+            case FLOAT32: {
+                var ra = ((RandomAccessibleInterval<FloatType>) rai).randomAccess();
+                ra.setPosition(new long[]{x, y, z});
+                return ra.get().getRealDouble();
+            }
             default:
                 return 0.0;
         }

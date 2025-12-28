@@ -404,6 +404,6 @@ public class ZarrWriter implements AutoCloseable {
     @Override
     public String toString() {
         return String.format("ZarrWriter[%s, compression=%s]",
-                zarrPath, compression != null ? compression.getType() : "none");
+                zarrPath, compression != null ? compression.getClass().getSimpleName() : "none");
     }
 }
