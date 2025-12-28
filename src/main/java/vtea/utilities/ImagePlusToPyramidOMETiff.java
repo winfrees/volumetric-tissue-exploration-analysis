@@ -88,13 +88,12 @@ public class ImagePlusToPyramidOMETiff {
 
         // Set channel colors
         omeMeta.setPixelsSizeC(new PositiveInteger(nChannels), series);
+        omeMeta.setPixelsInterleaved(isInterleaved, series);
+
         if (isRGB) {
             omeMeta.setChannelID("Channel:0", series, 0);
-            omeMeta.setPixelsInterleaved(isInterleaved, series);
             omeMeta.setChannelSamplesPerPixel(new PositiveInteger(3), series, 0); //nSamples = 3; // TODO : check!
         } else {
-            omeMeta.setChannelSamplesPerPixel(new PositiveInteger(1), series, 0);
-            omeMeta.setPixelsInterleaved(isInterleaved, series);
             for (int c = 0; c < nChannels; c++) {
                 omeMeta.setChannelID("Channel:0:" + c, series, c);
                 omeMeta.setChannelSamplesPerPixel(new PositiveInteger(1), series, c);
