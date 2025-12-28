@@ -112,9 +112,9 @@ public class ImagePlusToOMETiff {
             omeMeta.setPixelsPhysicalSizeZ(new Length(cal.pixelDepth, unit), series);
             // set Origin in XYZ
             // TODO : check if enough or other planes need to be set ?
-            omeMeta.setPlanePositionX(new Length(cal.xOrigin*cal.pixelWidth, unit),0,0);
-            omeMeta.setPlanePositionY(new Length(cal.yOrigin*cal.pixelHeight, unit),0,0);
-            omeMeta.setPlanePositionZ(new Length(cal.zOrigin*cal.pixelDepth, unit),0,0);
+            omeMeta.setPlanePositionX(new Length(cal.xOrigin*cal.pixelWidth, unit), series, 0);
+            omeMeta.setPlanePositionY(new Length(cal.yOrigin*cal.pixelHeight, unit), series, 0);
+            omeMeta.setPlanePositionZ(new Length(cal.zOrigin*cal.pixelDepth, unit), series, 0);
         }
 
         // Set resolutions
