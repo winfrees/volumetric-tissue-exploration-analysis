@@ -166,7 +166,7 @@ public class ZarrWriter implements AutoCloseable {
 
         // Write using N5Utils
         N5Utils.save((RandomAccessibleInterval) rai, n5Writer, datasetName,
-                    chunkSize, compression, dataType);
+                    chunkSize, compression);
 
         // Write metadata
         Map<String, Object> metadata = new HashMap<>();
@@ -222,7 +222,7 @@ public class ZarrWriter implements AutoCloseable {
         }
 
         // Write to Zarr
-        N5Utils.save(img, n5Writer, datasetName, chunkSize, compression, dataType);
+        N5Utils.save(img, n5Writer, datasetName, chunkSize, compression);
     }
 
     /**
@@ -273,7 +273,7 @@ public class ZarrWriter implements AutoCloseable {
 
             Img<UnsignedByteType> img = ArrayImgs.unsignedBytes(width, height, depth);
             copyArrayToImg(byteData, img);
-            N5Utils.save(img, n5Writer, datasetName, chunkSize, compression, dataType);
+            N5Utils.save(img, n5Writer, datasetName, chunkSize, compression);
 
         } else if (data instanceof short[][][]) {
             short[][][] shortData = (short[][][]) data;
@@ -283,7 +283,7 @@ public class ZarrWriter implements AutoCloseable {
 
             Img<UnsignedShortType> img = ArrayImgs.unsignedShorts(width, height, depth);
             copyArrayToImg(shortData, img);
-            N5Utils.save(img, n5Writer, datasetName, chunkSize, compression, dataType);
+            N5Utils.save(img, n5Writer, datasetName, chunkSize, compression);
 
         } else if (data instanceof float[][][]) {
             float[][][] floatData = (float[][][]) data;
@@ -293,7 +293,7 @@ public class ZarrWriter implements AutoCloseable {
 
             Img<FloatType> img = ArrayImgs.floats(width, height, depth);
             copyArrayToImg(floatData, img);
-            N5Utils.save(img, n5Writer, datasetName, chunkSize, compression, dataType);
+            N5Utils.save(img, n5Writer, datasetName, chunkSize, compression);
 
         } else {
             throw new IOException("Unsupported array type");

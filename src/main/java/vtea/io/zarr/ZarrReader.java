@@ -153,9 +153,19 @@ public class ZarrReader implements AutoCloseable {
         Map<String, Object> attributes = new HashMap<>();
 
         try {
-            Map<String, ?> zarrAttrs = n5Reader.getAttributes(datasetName);
-            if (zarrAttrs != null) {
-                attributes.putAll(zarrAttrs);
+            // Get all attribute keys and read each one
+            Map<String, Class<?>> attributeList = n5Reader.listAttributes(datasetName);
+            if (attributeList != null) {
+                for (String key : attributeList.keySet()) {
+                    try {
+                        Object value = n5Reader.getAttribute(datasetName, key, Object.class);
+                        if (value != null) {
+                            attributes.put(key, value);
+                        }
+                    } catch (Exception ex) {
+                        // Skip individual attributes that can't be read
+                    }
+                }
             }
         } catch (Exception e) {
             // Attributes not critical

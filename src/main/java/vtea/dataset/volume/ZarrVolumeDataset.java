@@ -156,11 +156,17 @@ public class ZarrVolumeDataset implements ChunkedVolumeDataset {
      */
     private void loadMetadata() {
         try {
-            Map<String, ?> attrs = n5Reader.getAttributes(datasetName);
-            if (attrs != null) {
-                for (Map.Entry<String, ?> entry : attrs.entrySet()) {
-                    if (entry.getValue() != null) {
-                        metadata.put(entry.getKey(), entry.getValue().toString());
+            // Get all attribute keys and read each one
+            Map<String, Class<?>> attributeList = n5Reader.listAttributes(datasetName);
+            if (attributeList != null) {
+                for (String key : attributeList.keySet()) {
+                    try {
+                        Object value = n5Reader.getAttribute(datasetName, key, Object.class);
+                        if (value != null) {
+                            metadata.put(key, value.toString());
+                        }
+                    } catch (Exception ex) {
+                        // Skip individual attributes that can't be read
                     }
                 }
             }
