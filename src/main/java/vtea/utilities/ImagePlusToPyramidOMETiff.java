@@ -74,7 +74,7 @@ public class ImagePlusToPyramidOMETiff {
                 throw new UnsupportedOperationException("Cannot convert image of type " + image.getType() + " into a valid OME PixelType");
         }
 
-        omeMeta.setPixelsBigEndian(!isLittleEndian, 0);
+        omeMeta.setPixelsBigEndian(!isLittleEndian, series);
 
         int width = image.getWidth();
         int height = image.getHeight();
