@@ -259,20 +259,20 @@ public class ZarrReader implements AutoCloseable {
         switch (info.dataType) {
             case UINT8:
             case INT8: {
-                var ra = ((RandomAccessibleInterval<UnsignedByteType>) rai).randomAccess();
+                net.imglib2.RandomAccess<UnsignedByteType> ra = ((RandomAccessibleInterval<UnsignedByteType>) rai).randomAccess();
                 ra.setPosition(new long[]{x, y, z});
                 return ra.get().getRealDouble();
             }
             case UINT16:
             case INT16: {
-                var ra = ((RandomAccessibleInterval<UnsignedShortType>) rai).randomAccess();
+                net.imglib2.RandomAccess<UnsignedShortType> ra = ((RandomAccessibleInterval<UnsignedShortType>) rai).randomAccess();
                 ra.setPosition(new long[]{x, y, z});
                 return ra.get().getRealDouble();
             }
             case UINT32:
             case INT32:
             case FLOAT32: {
-                var ra = ((RandomAccessibleInterval<FloatType>) rai).randomAccess();
+                net.imglib2.RandomAccess<FloatType> ra = ((RandomAccessibleInterval<FloatType>) rai).randomAccess();
                 ra.setPosition(new long[]{x, y, z});
                 return ra.get().getRealDouble();
             }
@@ -323,7 +323,7 @@ public class ZarrReader implements AutoCloseable {
      */
     private <T extends net.imglib2.type.numeric.RealType<T>> void copyToProcessor(
             RandomAccessibleInterval<T> rai, ImageProcessor ip) {
-        var cursor = Views.flatIterable(rai).cursor();
+        net.imglib2.Cursor<T> cursor = Views.flatIterable(rai).cursor();
         int i = 0;
         while (cursor.hasNext()) {
             ip.setf(i++, cursor.next().getRealFloat());

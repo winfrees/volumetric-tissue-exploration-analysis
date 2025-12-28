@@ -236,15 +236,15 @@ public class ZarrVolumeDataset implements ChunkedVolumeDataset {
 
             // Access voxel through ImgLib2
             if (bitDepth == 8) {
-                var ra = ((RandomAccessibleInterval<UnsignedByteType>) rai).randomAccess();
+                net.imglib2.RandomAccess<UnsignedByteType> ra = ((RandomAccessibleInterval<UnsignedByteType>) rai).randomAccess();
                 ra.setPosition(new long[]{x, y, z});
                 return ra.get().getRealDouble();
             } else if (bitDepth == 16) {
-                var ra = ((RandomAccessibleInterval<UnsignedShortType>) rai).randomAccess();
+                net.imglib2.RandomAccess<UnsignedShortType> ra = ((RandomAccessibleInterval<UnsignedShortType>) rai).randomAccess();
                 ra.setPosition(new long[]{x, y, z});
                 return ra.get().getRealDouble();
             } else {
-                var ra = ((RandomAccessibleInterval<FloatType>) rai).randomAccess();
+                net.imglib2.RandomAccess<FloatType> ra = ((RandomAccessibleInterval<FloatType>) rai).randomAccess();
                 ra.setPosition(new long[]{x, y, z});
                 return ra.get().getRealDouble();
             }
@@ -312,7 +312,7 @@ public class ZarrVolumeDataset implements ChunkedVolumeDataset {
      */
     private <T extends RealType<T>> void copyToProcessor(RandomAccessibleInterval<T> rai,
                                                           ImageProcessor ip, int width, int height) {
-        var cursor = Views.flatIterable(rai).cursor();
+        net.imglib2.Cursor<T> cursor = Views.flatIterable(rai).cursor();
         int i = 0;
         while (cursor.hasNext()) {
             ip.setf(i++, cursor.next().getRealFloat());

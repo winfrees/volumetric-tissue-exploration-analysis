@@ -230,7 +230,7 @@ public class ZarrWriter implements AutoCloseable {
      */
     private <T extends net.imglib2.type.numeric.RealType<T>> void copyStackToImg(
             ImageStack stack, Img<T> img) {
-        var cursor = img.cursor();
+        net.imglib2.Cursor<T> cursor = img.cursor();
         int z = 0;
         int sliceSize = stack.getWidth() * stack.getHeight();
 
@@ -304,7 +304,7 @@ public class ZarrWriter implements AutoCloseable {
      * Copy byte array to Img
      */
     private void copyArrayToImg(byte[][][] data, Img<UnsignedByteType> img) {
-        var cursor = img.cursor();
+        net.imglib2.Cursor<UnsignedByteType> cursor = img.cursor();
         while (cursor.hasNext()) {
             cursor.fwd();
             long[] pos = new long[3];
@@ -317,7 +317,7 @@ public class ZarrWriter implements AutoCloseable {
      * Copy short array to Img
      */
     private void copyArrayToImg(short[][][] data, Img<UnsignedShortType> img) {
-        var cursor = img.cursor();
+        net.imglib2.Cursor<UnsignedShortType> cursor = img.cursor();
         while (cursor.hasNext()) {
             cursor.fwd();
             long[] pos = new long[3];
@@ -330,7 +330,7 @@ public class ZarrWriter implements AutoCloseable {
      * Copy float array to Img
      */
     private void copyArrayToImg(float[][][] data, Img<FloatType> img) {
-        var cursor = img.cursor();
+        net.imglib2.Cursor<FloatType> cursor = img.cursor();
         while (cursor.hasNext()) {
             cursor.fwd();
             long[] pos = new long[3];
