@@ -73,6 +73,7 @@ import vtea.exploration.plotgatetools.listeners.RandomizationListener;
 import vtea.exploration.plottools.panels.XYExplorationPanel;
 import vtea.imports.xml.roiHALO;
 import vteaexploration.GateMathWindow;
+import vtea.exploration.gallery.GalleryViewDataProvider;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -120,6 +121,8 @@ public class GateLayer implements ActionListener, ItemListener {
     private ArrayList<SpatialListener> spatialListeners = new ArrayList<>();
     private ArrayList<DatasetUtilitiesListener> DatasetUtilitiesListeners = new ArrayList<>();
 
+    // Gallery view data provider
+    private GalleryViewDataProvider galleryViewDataProvider;
 
     private ArrayList<PolygonGate> gates = new ArrayList<PolygonGate>();
 
@@ -699,6 +702,14 @@ public class GateLayer implements ActionListener, ItemListener {
         }
     }
 
+    /**
+     * Set the data provider for gallery view.
+     * @param provider The GalleryViewDataProvider to use
+     */
+    public void setGalleryViewDataProvider(GalleryViewDataProvider provider) {
+        this.galleryViewDataProvider = provider;
+    }
+
     private void createPopUpMenu(JXLayer layer) {
 
         this.menu = new JPopupMenu();
@@ -783,7 +794,11 @@ public class GateLayer implements ActionListener, ItemListener {
         menuItem = new JMenuItem("Subgate Selection...");
         menuItem.addActionListener(this);
         menu.add(menuItem);
-        
+
+        menuItem = new JMenuItem("Gallery View...");
+        menuItem.addActionListener(this);
+        menu.add(menuItem);
+
         menuItem = new JMenuItem("Dataset utilities...");
         menuItem.addActionListener(this);
         menu.add(menuItem);
@@ -904,6 +919,24 @@ public class GateLayer implements ActionListener, ItemListener {
             }
 
             notifySubgateListeners();
+
+        } else if (e.getActionCommand().equals("Gallery View...")) {
+            // Open gallery view for selected gate
+            if (selectedGate == null) {
+                JOptionPane.showMessageDialog(
+                        chart,
+                        "Please select a gate first.",
+                        "No Gate Selected",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
+            if (galleryViewDataProvider != null) {
+                galleryViewDataProvider.openGalleryView(selectedGate);
+            } else {
+                System.err.println("GalleryViewDataProvider not set in GateLayer!");
+            }
 
         } else if (e.getActionCommand().equals("Classify by Gate...")) {
 
