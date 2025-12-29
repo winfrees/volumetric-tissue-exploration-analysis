@@ -4553,20 +4553,18 @@ public class XYExplorationPanel extends AbstractExplorationPanel implements
      * Highlight a specific cell on the XY chart.
      */
     private void highlightCellOnChart(MicroObject cell) {
-        // This will be fully implemented when we add highlighting to XYChartPanel
-        // For now, we'll just store the selection
-        // TODO: Implement chart highlighting in XYChartPanel
-        System.out.println("Highlighting cell " + cell.getSerialID() + " on chart");
+        if (cpd != null) {
+            cpd.highlightCell(cell);
+        }
     }
 
     /**
      * Highlight cell on image overlay.
      */
     private void highlightCellOnImage(MicroObject cell) {
-        // This will be fully implemented when we add highlighting to GateLayer
-        // For now, we'll just log it
-        // TODO: Implement image highlighting in GateLayer
-        System.out.println("Highlighting cell " + cell.getSerialID() + " on image");
+        if (gateLayer != null) {
+            gateLayer.highlightCell(cell);
+        }
     }
 
     /**
@@ -4577,12 +4575,12 @@ public class XYExplorationPanel extends AbstractExplorationPanel implements
 
         // Clear chart highlighting
         if (cpd != null) {
-            // TODO: Implement clearCellHighlight in XYChartPanel
+            cpd.clearCellHighlight();
         }
 
         // Clear image highlighting
         if (gateLayer != null) {
-            // TODO: Implement clearCellHighlight in GateLayer
+            gateLayer.clearCellHighlight();
         }
     }
 
