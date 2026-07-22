@@ -1,0 +1,44 @@
+name: Generate golden-dataset fixtures
+
+# Manually triggered. Produces the reference outputs (segmentation masks,
+# measurement tables, clustering/PCA results) that the Python port at
+# https://github.com/winfrees/vtea-python diffs its own outputs against
+# for parity validation (see PYTHON_PORT_PLAN.md, Phase 0, and
+# vtea-python/tests/golden/README.md).
+#
+# This needs to run somewhere with normal internet access to
+# maven.scijava.org - it cannot run in network-restricted sandboxes, which
+# is why it's a CI workflow rather than something run inline during
+# development.
+#
+# After a run: download the "golden-fixtures" artifact from the workflow
+# run summary and copy its contents into vtea-python/tests/golden/fixtures/.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          cache: maven
+
+      - name: Build
+        run: mvn -B -q compile
+
+      - name: Run GoldenFixtureGenerator
+        run: mvn -B -q exec:java -Dexec.mainClass=vtea.tools.GoldenFixtureGenerator -Dexec.args=". target/golden-fixtures"
+
+      - name: Upload fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-fixtures
+          path: target/golden-fixtures/
+          if-no-files-found: error
